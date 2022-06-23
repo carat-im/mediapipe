@@ -20,11 +20,11 @@ cc_library(
     name = "libffmpeg",
     srcs = glob(
         [
-            "lib/libav*.dylib",
+            "local/lib/libav*.dylib",
         ],
     ),
-    hdrs = glob(["include/libav*/*.h"]),
-    includes = ["include/"],
+    hdrs = glob(["local/include/libav*/*.h"]),
+    includes = ["local/include/"],
     linkopts = [
         "-lavcodec",
         "-lavformat",
