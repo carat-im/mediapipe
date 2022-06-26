@@ -22,6 +22,7 @@
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
 #include "mediapipe/framework/formats/video_stream_header.h"
+#include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
@@ -45,6 +46,7 @@ namespace {
 constexpr char kVectorTag[] = "VECTOR";
 constexpr char kGpuBufferTag[] = "IMAGE_GPU";
 constexpr char kImageFrameTag[] = "IMAGE";
+constexpr char kMultiFaceLandmarksTag[] = "MULTI_FACE_LANDMARKS";
 
 enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
 
@@ -209,6 +211,10 @@ absl::Status AnnotationOverlayCalculator::GetContract(CalculatorContract* cc) {
       // Empty tag defaults to accepting a single object of RenderData type.
       cc->Inputs().Get(id).Set<RenderData>();
     }
+  }
+
+  if (cc->Inputs().HasTag(kMultiFaceLandmarksTag)) {
+    cc->Inputs().Tag(kMultiFaceLandmarksTag).Set<std::vector<NormalizedLandmarkList>>();
   }
 
   // Rendered image. Should be same type as input.
@@ -531,6 +537,146 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
   // program
   glUseProgram(program_);
 
+  std::vector<NormalizedLandmarkList> empty_multi_face_landmarks;
+  const auto& multi_face_landmarks =
+      cc->Inputs().Tag(kMultiFaceLandmarksTag).IsEmpty()
+          ? empty_multi_face_landmarks
+          : cc->Inputs().Tag(kMultiFaceLandmarksTag).Get<std::vector<NormalizedLandmarkList>>();
+
+  const auto& input_frame = cc->Inputs().Tag(kGpuBufferTag).Get<mediapipe::GpuBuffer>();
+  const auto& width = input_frame.width();
+  const auto& height = input_frame.height();
+
+  const int face_count = multi_face_landmarks.size();
+  const int landmark_count = 2; // todo: 사용하는 랜드마크 추가하면서 숫자 높여야함.
+
+  const float min_x = 1.0;
+  const float min_y = 1.0;
+  const float max_x = width - 1.0;
+  const float max_y = height - 1.0;
+  const std::vector<cv::Point2f> corners {
+      cv::Point2f(min_x, min_y),
+      cv::Point2f(max_x / 2.0, min_y),
+      cv::Point2f(max_x, min_y),
+      cv::Point2f(max_x, max_y / 2.0),
+      cv::Point2f(max_x, max_y),
+      cv::Point2f(max_x / 2.0, max_y),
+      cv::Point2f(min_x, max_y),
+      cv::Point2f(min_x, max_y / 2.0),
+  };
+
+  std::vector<cv::Point2f> orig_landmark_coords(landmark_count * face_count + corners.size());
+  std::vector<cv::Point2f> new_landmark_coords(landmark_count * face_count + corners.size());
+
+  for (int i = 0; i < face_count; ++i) {
+    const NormalizedLandmarkList& landmarks = multi_face_landmarks[i];
+    const NormalizedLandmark& l1 = landmarks.landmark(33);
+    const NormalizedLandmark& l2 = landmarks.landmark(133);
+    const cv::Point2f left_eye_left(l1.x() * width, l1.y() * height);
+    const cv::Point2f left_eye_right(l2.x() * width, l2.y() * height);
+
+    orig_landmark_coords[i * 2] = left_eye_left;
+    orig_landmark_coords[i * 2 + 1] = left_eye_right;
+
+    const cv::Point2f diff = left_eye_right - left_eye_left;
+    const cv::Point2f changed_diff = diff * 1.5f;
+    const cv::Point2f offset = (changed_diff - diff) / 2.0;
+    const cv::Point2f changed_left = left_eye_left - offset;
+    const cv::Point2f changed_right = left_eye_right + offset;
+    new_landmark_coords[i * 2] = changed_left;
+    new_landmark_coords[i * 2 + 1] = changed_right;
+  }
+
+  const int offset = face_count * 2;
+  for (int i = 0; i < 8; ++i) {
+    orig_landmark_coords[offset + i] = corners[i];
+    new_landmark_coords[offset + i] = corners[i];
+  }
+
+  std::map<int, int> landmark_coord_to_index;
+  for (int i = 0; i < orig_landmark_coords.size(); ++i) {
+    landmark_coord_to_index[orig_landmark_coords[i].x * 10000 + orig_landmark_coords[i].y] = i;
+  }
+
+  cv::Rect rect(0.0, 0.0, width, height);
+  cv::Subdiv2D subdiv(rect);
+  subdiv.insert(orig_landmark_coords);
+
+  std::vector<cv::Vec6f> triangles;
+  subdiv.getTriangleList(triangles);
+  std::vector<std::vector<int>> tri_coord_indexes;
+  for (int i = 0; i < triangles.size(); ++i) {
+    cv::Vec6f t = triangles[i];
+    if (t[0] >= 0 && t[0] <= width
+            && t[2] >= 0 && t[2] <= width
+            && t[4] >= 0 && t[4] <= width
+            && t[1] >= 0 && t[1] <= height
+            && t[3] >= 0 && t[3] <= height
+            && t[5] >= 0 && t[5] <= height) {
+      tri_coord_indexes.push_back({
+        landmark_coord_to_index[t[0] * 10000 + t[1]],
+        landmark_coord_to_index[t[2] * 10000 + t[3]],
+        landmark_coord_to_index[t[4] * 10000 + t[5]],
+      });
+    }
+  }
+
+  for (int i = 0; i < tri_coord_indexes.size(); ++i) {
+    const std::vector<int> tri_coord_index = tri_coord_indexes[i];
+
+    cv::Point2f src[3] {
+       cv::Point2f(
+         new_landmark_coords[tri_coord_index[0]].x / width,
+         new_landmark_coords[tri_coord_index[0]].y / height),
+       cv::Point2f(
+         new_landmark_coords[tri_coord_index[1]].x / width,
+         new_landmark_coords[tri_coord_index[1]].y / height),
+       cv::Point2f(
+         new_landmark_coords[tri_coord_index[2]].x / width,
+         new_landmark_coords[tri_coord_index[2]].y / height),
+    };
+    cv::Point2f dst[3] {
+       cv::Point2f(
+         orig_landmark_coords[tri_coord_index[0]].x / width,
+         orig_landmark_coords[tri_coord_index[0]].y / height),
+       cv::Point2f(
+         orig_landmark_coords[tri_coord_index[1]].x / width,
+         orig_landmark_coords[tri_coord_index[1]].y / height),
+       cv::Point2f(
+         orig_landmark_coords[tri_coord_index[2]].x / width,
+         orig_landmark_coords[tri_coord_index[2]].y / height),
+    };
+
+    cv::Mat aff_mat = cv::getAffineTransform(src, dst);
+    // cv::Mat inv_aff_mat = cv::Mat::zeros(aff_mat.rows, aff_mat.cols, aff_mat.type());
+    // cv::invertAffineTransform(aff_mat, inv_aff_mat);
+
+    glUniform2f(
+      glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].p1").c_str()),
+      dst[0].x,
+      dst[0].y);
+    glUniform2f(
+      glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].p2").c_str()),
+      dst[1].x,
+      dst[1].y);
+    glUniform2f(
+      glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].p3").c_str()),
+      dst[2].x,
+      dst[2].y);
+    glUniform3f(
+      glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].m1").c_str()),
+      (float)aff_mat.at<double>(0, 0),
+      (float)aff_mat.at<double>(0, 1),
+      (float)aff_mat.at<double>(0, 2));
+    glUniform3f(
+      glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].m2").c_str()),
+      (float)aff_mat.at<double>(1, 0),
+      (float)aff_mat.at<double>(1, 1),
+      (float)aff_mat.at<double>(1, 2));
+  }
+
+  glUniform1i(glGetUniformLocation(program_, "transform_data_count"), tri_coord_indexes.size());
+
   // vertex storage
   GLuint vbo[2];
   glGenBuffers(2, vbo);
@@ -594,9 +740,45 @@ absl::Status AnnotationOverlayCalculator::GlSetup(CalculatorContext* cc) {
     // been uploaded to GPU without vertical flip)
     uniform sampler2D overlay;
     uniform vec3 transparent_color;
+    uniform float left_eye_top;
+
+    struct TransformData {
+      vec2 p1;
+      vec2 p2;
+      vec2 p3;
+      vec3 m1;
+      vec3 m2;
+    };
+
+    uniform TransformData transform_data[80];
+    uniform int transform_data_count;
+
+    bool isInTriangle(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
+      float A = 0.5 * (-p1.y * p2.x + p0.y * (-p1.x + p2.x) + p0.x * (p1.y - p2.y) + p1.x * p2.y);
+      float sign = A < 0.0 ? -1.0 : 1.0;
+      float s = (p0.y * p2.x - p0.x * p2.y + (p2.y - p0.y) * p.x + (p0.x - p2.x) * p.y) * sign;
+      float t = (p0.x * p1.y - p0.y * p1.x + (p0.y - p1.y) * p.x + (p1.x - p0.x) * p.y) * sign;
+      
+      return s > 0.0 && t > 0.0 && (s + t) < 2.0 * A * sign;
+    }
+
+    vec2 applyTransform(vec2 v, vec3 m1, vec3 m2) {
+      float newX = m1.x * v.x + m1.y * v.y + m1.z;
+      float newY = m2.x * v.x + m2.y * v.y + m2.z;
+      return vec2(newX, newY);
+    }
 
     void main() {
-      vec3 image_pix = texture2D(input_frame, sample_coordinate).rgb;
+      vec2 final_sample_coord = sample_coordinate;
+      for (int i = 0; i < transform_data_count; i++) {
+        TransformData t = transform_data[i];
+        if (isInTriangle(sample_coordinate, t.p1, t.p2, t.p3)) {
+          final_sample_coord = applyTransform(sample_coordinate, t.m1, t.m2);
+          break;
+        }
+      }
+
+      vec3 image_pix = texture2D(input_frame, final_sample_coord).rgb;
   #ifdef INPUT_FRAME_HAS_TOP_LEFT_ORIGIN
       // "input_frame" has top-left origin same as "overlay", hence overlaying
       // as is.

@@ -55,7 +55,7 @@ node {
     [type.googleapis.com/mediapipe.LandmarksToRenderDataCalculatorOptions] {
       landmark_color { r: 0 g: 255 b: 0 }
       connection_color { r: 0 g: 255 b: 255 }
-      thickness: 3
+      thickness: 1
       visualize_landmark_depth: false
     }
   }
@@ -92,5 +92,6 @@ node {
   input_stream: "detections_render_data"
   input_stream: "VECTOR:0:multi_face_landmarks_render_data"
   input_stream: "rects_render_data"
+  input_stream: "MULTI_FACE_LANDMARKS:multi_face_landmarks"
   output_stream: "IMAGE_GPU:output_image"
 }

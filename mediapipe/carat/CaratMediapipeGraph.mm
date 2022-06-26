@@ -9,7 +9,7 @@ static const char* kOutputStream = "output_video";
 static const char* kNumFacesInputSidePacket = "num_faces";
 static const char* kLandmarksOutputStream = "multi_face_landmarks";
 
-static const int kNumFaces = 2;
+static const int kNumFaces = 4;
 
 @interface CaratMediapipeGraph() <MPPGraphDelegate>
 @property(nonatomic) MPPGraph* mediapipeGraph;
