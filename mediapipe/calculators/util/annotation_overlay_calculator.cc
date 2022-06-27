@@ -567,6 +567,7 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
 
   std::vector<cv::Point2f> orig_landmark_coords(landmark_count * face_count + corners.size());
   std::vector<cv::Point2f> new_landmark_coords(landmark_count * face_count + corners.size());
+  std::vector<cv::Point2f> landmark_coords_for_triangulation(landmark_count * face_count + corners.size());
 
   for (int i = 0; i < face_count; ++i) {
     const NormalizedLandmarkList& landmarks = multi_face_landmarks[i];
@@ -585,22 +586,26 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
     const cv::Point2f changed_right = left_eye_right + offset;
     new_landmark_coords[i * 2] = changed_left;
     new_landmark_coords[i * 2 + 1] = changed_right;
+
+    landmark_coords_for_triangulation[i * 2] = (orig_landmark_coords[i * 2] + new_landmark_coords[i * 2]) / 2;
+    landmark_coords_for_triangulation[i * 2 + 1] = (orig_landmark_coords[i * 2 + 1] + new_landmark_coords[i * 2 + 1]) / 2;
   }
 
   const int offset = face_count * 2;
   for (int i = 0; i < 8; ++i) {
     orig_landmark_coords[offset + i] = corners[i];
     new_landmark_coords[offset + i] = corners[i];
+    landmark_coords_for_triangulation[offset + i] = corners[i];
   }
 
   std::map<int, int> landmark_coord_to_index;
   for (int i = 0; i < orig_landmark_coords.size(); ++i) {
-    landmark_coord_to_index[orig_landmark_coords[i].x * 10000 + orig_landmark_coords[i].y] = i;
+    landmark_coord_to_index[landmark_coords_for_triangulation[i].x * 10000 + landmark_coords_for_triangulation[i].y] = i;
   }
 
   cv::Rect rect(0.0, 0.0, width, height);
   cv::Subdiv2D subdiv(rect);
-  subdiv.insert(orig_landmark_coords);
+  subdiv.insert(landmark_coords_for_triangulation);
 
   std::vector<cv::Vec6f> triangles;
   subdiv.getTriangleList(triangles);
