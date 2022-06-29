@@ -48,6 +48,14 @@ constexpr char kGpuBufferTag[] = "IMAGE_GPU";
 constexpr char kImageFrameTag[] = "IMAGE";
 constexpr char kMultiFaceLandmarksTag[] = "MULTI_FACE_LANDMARKS";
 
+constexpr char kEyeSizeTag[] = "EYE_SIZE";
+
+constexpr int kLeftEyeLandmarkCount = 16;
+constexpr int kLeftEyeLandmarkPairs[] = {
+    // Left eye.
+    33, 133, 246, 7, 161, 163, 160, 144, 159, 145, 158, 153, 157, 154, 173, 155,
+};
+
 enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
 
 // Round up n to next multiple of m.
@@ -170,6 +178,8 @@ class AnnotationOverlayCalculator : public CalculatorBase {
   int width_canvas_ = 0;  // Size of overlay drawing texture canvas.
   int height_canvas_ = 0;
 #endif  // MEDIAPIPE_DISABLE_GPU
+
+  float eye_size_ = 1.0;
 };
 REGISTER_CALCULATOR(AnnotationOverlayCalculator);
 
@@ -213,10 +223,6 @@ absl::Status AnnotationOverlayCalculator::GetContract(CalculatorContract* cc) {
     }
   }
 
-  if (cc->Inputs().HasTag(kMultiFaceLandmarksTag)) {
-    cc->Inputs().Tag(kMultiFaceLandmarksTag).Set<std::vector<NormalizedLandmarkList>>();
-  }
-
   // Rendered image. Should be same type as input.
 #if !MEDIAPIPE_DISABLE_GPU
   if (cc->Outputs().HasTag(kGpuBufferTag)) {
@@ -231,6 +237,14 @@ absl::Status AnnotationOverlayCalculator::GetContract(CalculatorContract* cc) {
 #if !MEDIAPIPE_DISABLE_GPU
     MP_RETURN_IF_ERROR(mediapipe::GlCalculatorHelper::UpdateContract(cc));
 #endif  // !MEDIAPIPE_DISABLE_GPU
+  }
+
+  if (cc->Inputs().HasTag(kMultiFaceLandmarksTag)) {
+    cc->Inputs().Tag(kMultiFaceLandmarksTag).Set<std::vector<NormalizedLandmarkList>>();
+  }
+
+  if (cc->InputSidePackets().HasTag(kEyeSizeTag)) {
+    cc->InputSidePackets().Tag(kEyeSizeTag).Set<std::unique_ptr<float>>();
   }
 
   return absl::OkStatus();
@@ -547,8 +561,9 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
   const auto& width = input_frame.width();
   const auto& height = input_frame.height();
 
-  const int face_count = multi_face_landmarks.size();
-  const int landmark_count = 2; // todo: 사용하는 랜드마크 추가하면서 숫자 높여야함.
+  if (cc->InputSidePackets().HasTag(kEyeSizeTag)) {
+    eye_size_ = *cc->InputSidePackets().Tag(kEyeSizeTag).Get<std::unique_ptr<float>>();
+  }
 
   const float min_x = 1.0;
   const float min_y = 1.0;
@@ -565,30 +580,48 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
       cv::Point2f(min_x, max_y / 2.0),
   };
 
+  const int face_count = multi_face_landmarks.size();
+  // todo: 다른 랜드마크들 count도 추가.
+  const int landmark_count = kLeftEyeLandmarkCount;
+
   std::vector<cv::Point2f> orig_landmark_coords(landmark_count * face_count + corners.size());
   std::vector<cv::Point2f> new_landmark_coords(landmark_count * face_count + corners.size());
   std::vector<cv::Point2f> landmark_coords_for_triangulation(landmark_count * face_count + corners.size());
 
   for (int i = 0; i < face_count; ++i) {
     const NormalizedLandmarkList& landmarks = multi_face_landmarks[i];
-    const NormalizedLandmark& l1 = landmarks.landmark(33);
-    const NormalizedLandmark& l2 = landmarks.landmark(133);
-    const cv::Point2f left_eye_left(l1.x() * width, l1.y() * height);
-    const cv::Point2f left_eye_right(l2.x() * width, l2.y() * height);
 
-    orig_landmark_coords[i * 2] = left_eye_left;
-    orig_landmark_coords[i * 2 + 1] = left_eye_right;
+    for (int j = 0; j < landmark_count / 2; ++j) {
+      const int insert_idx = i * landmark_count + j * 2;
+      const int insert_idx2 = insert_idx + 1;
 
-    const cv::Point2f diff = left_eye_right - left_eye_left;
-    const cv::Point2f changed_diff = diff * 1.5f;
-    const cv::Point2f offset = (changed_diff - diff) / 2.0;
-    const cv::Point2f changed_left = left_eye_left - offset;
-    const cv::Point2f changed_right = left_eye_right + offset;
-    new_landmark_coords[i * 2] = changed_left;
-    new_landmark_coords[i * 2 + 1] = changed_right;
+      const NormalizedLandmark& l1 = landmarks.landmark(kLeftEyeLandmarkPairs[j * 2]);
+      const NormalizedLandmark& l2 = landmarks.landmark(kLeftEyeLandmarkPairs[j * 2 + 1]);
+      const cv::Point2f c1(l1.x() * width, l1.y() * height);
+      const cv::Point2f c2(l2.x() * width, l2.y() * height);
 
-    landmark_coords_for_triangulation[i * 2] = (orig_landmark_coords[i * 2] + new_landmark_coords[i * 2]) / 2;
-    landmark_coords_for_triangulation[i * 2 + 1] = (orig_landmark_coords[i * 2 + 1] + new_landmark_coords[i * 2 + 1]) / 2;
+      orig_landmark_coords[insert_idx] = c1;
+      orig_landmark_coords[insert_idx2] = c2;
+
+      cv::Point2f nc1;
+      cv::Point2f nc2;
+      if (eye_size_ != 1.0) {
+        const cv::Point2f diff = c2 - c1;
+        const cv::Point2f changed_diff = diff * eye_size_;
+        const cv::Point2f offset = (changed_diff - diff) / 2.0;
+        nc1 = c1 - offset;
+        nc2 = c2 + offset;
+      } else {
+        nc1 = c1;
+        nc2 = c2;
+      }
+
+      new_landmark_coords[insert_idx] = nc1;
+      new_landmark_coords[insert_idx2] = nc2;
+
+      landmark_coords_for_triangulation[insert_idx] = (c1 + nc1) / 2;
+      landmark_coords_for_triangulation[insert_idx2] = (c2 + nc2) / 2;
+    }
   }
 
   const int offset = face_count * 2;
@@ -626,6 +659,7 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
     }
   }
 
+  LOG(WARNING) << "triangles size:" << std::to_string(tri_coord_indexes.size()) << " eye size: " << std::to_string(eye_size_);
   for (int i = 0; i < tri_coord_indexes.size(); ++i) {
     const std::vector<int> tri_coord_index = tri_coord_indexes[i];
 
@@ -653,8 +687,6 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
     };
 
     cv::Mat aff_mat = cv::getAffineTransform(src, dst);
-    // cv::Mat inv_aff_mat = cv::Mat::zeros(aff_mat.rows, aff_mat.cols, aff_mat.type());
-    // cv::invertAffineTransform(aff_mat, inv_aff_mat);
 
     glUniform2f(
       glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].p1").c_str()),

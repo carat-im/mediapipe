@@ -11,5 +11,6 @@
 - (instancetype)init;
 - (void)startGraph;
 - (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer;
+- (void)setFaceSettingsParamsWithEyeSize:(float)eyeSize;
 @property(weak, nonatomic) id <CaratMediapipeGraphDelegate> delegate;
 @end

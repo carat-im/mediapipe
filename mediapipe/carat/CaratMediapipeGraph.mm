@@ -11,11 +11,15 @@ static const char* kLandmarksOutputStream = "multi_face_landmarks";
 
 static const int kNumFaces = 4;
 
+static const char* kEyeSizeInputSidePacket = "eye_size";
+
 @interface CaratMediapipeGraph() <MPPGraphDelegate>
 @property(nonatomic) MPPGraph* mediapipeGraph;
 @end
 
-@implementation CaratMediapipeGraph {}
+@implementation CaratMediapipeGraph {
+    mediapipe::Packet _eyeSizePacket;
+}
 
 #pragma mark - Cleanup methods
 
@@ -57,6 +61,10 @@ static const int kNumFaces = 4;
         [self.mediapipeGraph addFrameOutputStream:kOutputStream outputPacketType:MPPPacketTypePixelBuffer];
         [self.mediapipeGraph addFrameOutputStream:kLandmarksOutputStream outputPacketType:MPPPacketTypeRaw];
         [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<int>(kNumFaces)) named:kNumFacesInputSidePacket];
+
+        mediapipe::Packet packet = mediapipe::AdoptAsUniquePtr<float>(new float(1.f));
+        [self.mediapipeGraph setSidePacket:packet named:kEyeSizeInputSidePacket];
+        _eyeSizePacket = packet;
     }
     return self;
 }
@@ -68,6 +76,11 @@ static const int kNumFaces = 4;
     } else if (![self.mediapipeGraph waitUntilIdleWithError:&error]) {
         NSLog(@"Failed to complete graph initial run: %@", error);
     }
+}
+
+- (void)setFaceSettingsParamsWithEyeSize:(float)eyeSize {
+    float *f = mediapipe::GetFromUniquePtr<float>(_eyeSizePacket);
+    *f = eyeSize;
 }
 
 - (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer {

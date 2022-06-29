@@ -13,6 +13,8 @@ input_stream: "NORM_RECTS:rects"
 # Detected palms. (std::vector<Detection>)
 input_stream: "DETECTIONS:detections"
 
+input_side_packet: "EYE_SIZE:eye_size"
+
 # GPU image with rendered data. (GpuBuffer)
 output_stream: "IMAGE:output_image"
 
@@ -93,5 +95,6 @@ node {
   input_stream: "VECTOR:0:multi_face_landmarks_render_data"
   input_stream: "rects_render_data"
   input_stream: "MULTI_FACE_LANDMARKS:multi_face_landmarks"
+  input_side_packet: "EYE_SIZE:eye_size"
   output_stream: "IMAGE_GPU:output_image"
 }

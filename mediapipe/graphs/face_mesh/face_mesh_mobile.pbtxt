@@ -6,6 +6,8 @@ input_stream: "input_video"
 # Max number of faces to detect/process. (int)
 input_side_packet: "num_faces"
 
+input_side_packet: "eye_size"
+
 # Output image with rendered results. (GpuBuffer)
 output_stream: "output_video"
 # Collection of detected/processed faces, each represented as a list of
@@ -63,5 +65,6 @@ node {
   input_stream: "LANDMARKS:multi_face_landmarks"
   input_stream: "NORM_RECTS:face_rects_from_landmarks"
   input_stream: "DETECTIONS:face_detections"
+  input_side_packet: "EYE_SIZE:eye_size"
   output_stream: "IMAGE:output_video"
 }
