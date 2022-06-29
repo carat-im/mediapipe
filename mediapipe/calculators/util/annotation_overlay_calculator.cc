@@ -50,10 +50,11 @@ constexpr char kMultiFaceLandmarksTag[] = "MULTI_FACE_LANDMARKS";
 
 constexpr char kEyeSizeTag[] = "EYE_SIZE";
 
-constexpr int kLeftEyeLandmarkCount = 16;
-constexpr int kLeftEyeLandmarkPairs[] = {
+constexpr int kLandmarkIndexPairs[] = {
     // Left eye.
     33, 133, 246, 7, 161, 163, 160, 144, 159, 145, 158, 153, 157, 154, 173, 155,
+    // Right eye.
+    362, 263, 398, 382, 384, 381, 385, 380, 386, 374, 387, 373, 388, 390, 466, 249,
 };
 
 enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
@@ -178,6 +179,11 @@ class AnnotationOverlayCalculator : public CalculatorBase {
   int width_canvas_ = 0;  // Size of overlay drawing texture canvas.
   int height_canvas_ = 0;
 #endif  // MEDIAPIPE_DISABLE_GPU
+
+  std::vector<cv::Point2f> orig_landmark_coords_;
+  std::vector<cv::Point2f> new_landmark_coords_;
+  std::vector<cv::Point2f> landmark_coords_for_triangulation_;
+  std::map<int, int> landmark_coord_to_index_;
 
   float eye_size_ = 1.0;
 };
@@ -580,29 +586,24 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
       cv::Point2f(min_x, max_y / 2.0),
   };
 
-  const int face_count = multi_face_landmarks.size();
-  // todo: 다른 랜드마크들 count도 추가.
-  const int landmark_count = kLeftEyeLandmarkCount;
+  orig_landmark_coords_.clear();
+  new_landmark_coords_.clear();
+  landmark_coords_for_triangulation_.clear();
+  landmark_coord_to_index_.clear();
 
-  std::vector<cv::Point2f> orig_landmark_coords(landmark_count * face_count + corners.size());
-  std::vector<cv::Point2f> new_landmark_coords(landmark_count * face_count + corners.size());
-  std::vector<cv::Point2f> landmark_coords_for_triangulation(landmark_count * face_count + corners.size());
+  const int landmark_count
+      = 16 // 왼쪽 눈
+      + 16; // 오른쪽 눈
 
-  for (int i = 0; i < face_count; ++i) {
+  for (int i = 0; i < multi_face_landmarks.size(); ++i) {
     const NormalizedLandmarkList& landmarks = multi_face_landmarks[i];
 
     for (int j = 0; j < landmark_count / 2; ++j) {
-      const int insert_idx = i * landmark_count + j * 2;
-      const int insert_idx2 = insert_idx + 1;
+      const NormalizedLandmark& l1 = landmarks.landmark(kLandmarkIndexPairs[j * 2]);
+      const NormalizedLandmark& l2 = landmarks.landmark(kLandmarkIndexPairs[j * 2 + 1]);
 
-      const NormalizedLandmark& l1 = landmarks.landmark(kLeftEyeLandmarkPairs[j * 2]);
-      const NormalizedLandmark& l2 = landmarks.landmark(kLeftEyeLandmarkPairs[j * 2 + 1]);
       const cv::Point2f c1(l1.x() * width, l1.y() * height);
       const cv::Point2f c2(l2.x() * width, l2.y() * height);
-
-      orig_landmark_coords[insert_idx] = c1;
-      orig_landmark_coords[insert_idx2] = c2;
-
       cv::Point2f nc1;
       cv::Point2f nc2;
       if (eye_size_ != 1.0) {
@@ -615,30 +616,34 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
         nc1 = c1;
         nc2 = c2;
       }
+      const cv::Point2f ac1 = (c1 + nc1) / 2;
+      const cv::Point2f ac2 = (c2 + nc2) / 2;
 
-      new_landmark_coords[insert_idx] = nc1;
-      new_landmark_coords[insert_idx2] = nc2;
-
-      landmark_coords_for_triangulation[insert_idx] = (c1 + nc1) / 2;
-      landmark_coords_for_triangulation[insert_idx2] = (c2 + nc2) / 2;
+      if (ac1.x >= min_x && ac1.x <= max_x && ac1.y >= min_y && ac1.y <= max_y
+              && ac2.x >= min_x && ac2.x <= max_x && ac2.y >= min_y && ac2.y <= max_y) {
+        orig_landmark_coords_.push_back(c1);
+        orig_landmark_coords_.push_back(c2);
+        new_landmark_coords_.push_back(nc1);
+        new_landmark_coords_.push_back(nc2);
+        landmark_coords_for_triangulation_.push_back(ac1);
+        landmark_coords_for_triangulation_.push_back(ac2);
+      }
     }
   }
 
-  const int offset = face_count * 2;
-  for (int i = 0; i < 8; ++i) {
-    orig_landmark_coords[offset + i] = corners[i];
-    new_landmark_coords[offset + i] = corners[i];
-    landmark_coords_for_triangulation[offset + i] = corners[i];
+  for (int i = 0; i < corners.size(); ++i) {
+    orig_landmark_coords_.push_back(corners[i]);
+    new_landmark_coords_.push_back(corners[i]);
+    landmark_coords_for_triangulation_.push_back(corners[i]);
   }
 
-  std::map<int, int> landmark_coord_to_index;
-  for (int i = 0; i < orig_landmark_coords.size(); ++i) {
-    landmark_coord_to_index[landmark_coords_for_triangulation[i].x * 10000 + landmark_coords_for_triangulation[i].y] = i;
+  for (int i = 0; i < landmark_coords_for_triangulation_.size(); ++i) {
+    landmark_coord_to_index_[landmark_coords_for_triangulation_[i].x * 10000 + landmark_coords_for_triangulation_[i].y] = i;
   }
 
   cv::Rect rect(0.0, 0.0, width, height);
   cv::Subdiv2D subdiv(rect);
-  subdiv.insert(landmark_coords_for_triangulation);
+  subdiv.insert(landmark_coords_for_triangulation_);
 
   std::vector<cv::Vec6f> triangles;
   subdiv.getTriangleList(triangles);
@@ -652,9 +657,9 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
             && t[3] >= 0 && t[3] <= height
             && t[5] >= 0 && t[5] <= height) {
       tri_coord_indexes.push_back({
-        landmark_coord_to_index[t[0] * 10000 + t[1]],
-        landmark_coord_to_index[t[2] * 10000 + t[3]],
-        landmark_coord_to_index[t[4] * 10000 + t[5]],
+        landmark_coord_to_index_[t[0] * 10000 + t[1]],
+        landmark_coord_to_index_[t[2] * 10000 + t[3]],
+        landmark_coord_to_index_[t[4] * 10000 + t[5]],
       });
     }
   }
@@ -665,25 +670,25 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
 
     cv::Point2f src[3] {
        cv::Point2f(
-         new_landmark_coords[tri_coord_index[0]].x / width,
-         new_landmark_coords[tri_coord_index[0]].y / height),
+         new_landmark_coords_[tri_coord_index[0]].x / width,
+         new_landmark_coords_[tri_coord_index[0]].y / height),
        cv::Point2f(
-         new_landmark_coords[tri_coord_index[1]].x / width,
-         new_landmark_coords[tri_coord_index[1]].y / height),
+         new_landmark_coords_[tri_coord_index[1]].x / width,
+         new_landmark_coords_[tri_coord_index[1]].y / height),
        cv::Point2f(
-         new_landmark_coords[tri_coord_index[2]].x / width,
-         new_landmark_coords[tri_coord_index[2]].y / height),
+         new_landmark_coords_[tri_coord_index[2]].x / width,
+         new_landmark_coords_[tri_coord_index[2]].y / height),
     };
     cv::Point2f dst[3] {
        cv::Point2f(
-         orig_landmark_coords[tri_coord_index[0]].x / width,
-         orig_landmark_coords[tri_coord_index[0]].y / height),
+         orig_landmark_coords_[tri_coord_index[0]].x / width,
+         orig_landmark_coords_[tri_coord_index[0]].y / height),
        cv::Point2f(
-         orig_landmark_coords[tri_coord_index[1]].x / width,
-         orig_landmark_coords[tri_coord_index[1]].y / height),
+         orig_landmark_coords_[tri_coord_index[1]].x / width,
+         orig_landmark_coords_[tri_coord_index[1]].y / height),
        cv::Point2f(
-         orig_landmark_coords[tri_coord_index[2]].x / width,
-         orig_landmark_coords[tri_coord_index[2]].y / height),
+         orig_landmark_coords_[tri_coord_index[2]].x / width,
+         orig_landmark_coords_[tri_coord_index[2]].y / height),
     };
 
     cv::Mat aff_mat = cv::getAffineTransform(src, dst);
