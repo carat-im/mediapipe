@@ -50,13 +50,6 @@ constexpr char kMultiFaceLandmarksTag[] = "MULTI_FACE_LANDMARKS";
 
 constexpr char kEyeSizeTag[] = "EYE_SIZE";
 
-constexpr int kLandmarkIndexPairs[] = {
-    // Left eye.
-    33, 133, 246, 7, 161, 163, 160, 144, 159, 145, 158, 153, 157, 154, 173, 155,
-    // Right eye.
-    362, 263, 398, 382, 384, 381, 385, 380, 386, 374, 387, 373, 388, 390, 466, 249,
-};
-
 enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
 
 // Round up n to next multiple of m.
@@ -179,11 +172,6 @@ class AnnotationOverlayCalculator : public CalculatorBase {
   int width_canvas_ = 0;  // Size of overlay drawing texture canvas.
   int height_canvas_ = 0;
 #endif  // MEDIAPIPE_DISABLE_GPU
-
-  std::vector<cv::Point2f> orig_landmark_coords_;
-  std::vector<cv::Point2f> new_landmark_coords_;
-  std::vector<cv::Point2f> landmark_coords_for_triangulation_;
-  std::map<int, int> landmark_coord_to_index_;
 
   float eye_size_ = 1.0;
 };
@@ -563,161 +551,35 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
           ? empty_multi_face_landmarks
           : cc->Inputs().Tag(kMultiFaceLandmarksTag).Get<std::vector<NormalizedLandmarkList>>();
 
-  const auto& input_frame = cc->Inputs().Tag(kGpuBufferTag).Get<mediapipe::GpuBuffer>();
-  const auto& width = input_frame.width();
-  const auto& height = input_frame.height();
-
   if (cc->InputSidePackets().HasTag(kEyeSizeTag)) {
     eye_size_ = *cc->InputSidePackets().Tag(kEyeSizeTag).Get<std::unique_ptr<float>>();
   }
 
-  const float min_x = 1.0;
-  const float min_y = 1.0;
-  const float max_x = width - 1.0;
-  const float max_y = height - 1.0;
-  const std::vector<cv::Point2f> corners {
-      cv::Point2f(min_x, min_y),
-      cv::Point2f(max_x / 2.0, min_y),
-      cv::Point2f(max_x, min_y),
-      cv::Point2f(max_x, max_y / 2.0),
-      cv::Point2f(max_x, max_y),
-      cv::Point2f(max_x / 2.0, max_y),
-      cv::Point2f(min_x, max_y),
-      cv::Point2f(min_x, max_y / 2.0),
-  };
-
-  orig_landmark_coords_.clear();
-  new_landmark_coords_.clear();
-  landmark_coords_for_triangulation_.clear();
-  landmark_coord_to_index_.clear();
-
-  const int landmark_count
-      = 16 // 왼쪽 눈
-      + 16; // 오른쪽 눈
+  const int liquify_regions_count_per_face = 1; // todo: 증가시키기.
 
   for (int i = 0; i < multi_face_landmarks.size(); ++i) {
     const NormalizedLandmarkList& landmarks = multi_face_landmarks[i];
 
-    for (int j = 0; j < landmark_count / 2; ++j) {
-      const NormalizedLandmark& l1 = landmarks.landmark(kLandmarkIndexPairs[j * 2]);
-      const NormalizedLandmark& l2 = landmarks.landmark(kLandmarkIndexPairs[j * 2 + 1]);
+    const NormalizedLandmark& left_eye_left = landmarks.landmark(130);
+    const NormalizedLandmark& left_eye_right = landmarks.landmark(243);
+    const cv::Point2f p1(left_eye_left.x(), left_eye_left.y());
+    const cv::Point2f p2(left_eye_right.x(), left_eye_right.y());
 
-      const cv::Point2f c1(l1.x() * width, l1.y() * height);
-      const cv::Point2f c2(l2.x() * width, l2.y() * height);
-      cv::Point2f nc1;
-      cv::Point2f nc2;
-      if (eye_size_ != 1.0) {
-        const cv::Point2f diff = c2 - c1;
-        const cv::Point2f changed_diff = diff * eye_size_;
-        const cv::Point2f offset = (changed_diff - diff) / 2.0;
-        nc1 = c1 - offset;
-        nc2 = c2 + offset;
-      } else {
-        nc1 = c1;
-        nc2 = c2;
-      }
-      const cv::Point2f ac1 = (c1 + nc1) / 2;
-      const cv::Point2f ac2 = (c2 + nc2) / 2;
-
-      if (ac1.x >= min_x && ac1.x <= max_x && ac1.y >= min_y && ac1.y <= max_y
-              && ac2.x >= min_x && ac2.x <= max_x && ac2.y >= min_y && ac2.y <= max_y) {
-        orig_landmark_coords_.push_back(c1);
-        orig_landmark_coords_.push_back(c2);
-        new_landmark_coords_.push_back(nc1);
-        new_landmark_coords_.push_back(nc2);
-        landmark_coords_for_triangulation_.push_back(ac1);
-        landmark_coords_for_triangulation_.push_back(ac2);
-      }
-    }
-  }
-
-  for (int i = 0; i < corners.size(); ++i) {
-    orig_landmark_coords_.push_back(corners[i]);
-    new_landmark_coords_.push_back(corners[i]);
-    landmark_coords_for_triangulation_.push_back(corners[i]);
-  }
-
-  for (int i = 0; i < landmark_coords_for_triangulation_.size(); ++i) {
-    landmark_coord_to_index_[landmark_coords_for_triangulation_[i].x * 10000 + landmark_coords_for_triangulation_[i].y] = i;
-  }
-
-  cv::Rect rect(0.0, 0.0, width, height);
-  cv::Subdiv2D subdiv(rect);
-  subdiv.insert(landmark_coords_for_triangulation_);
-
-  std::vector<cv::Vec6f> triangles;
-  subdiv.getTriangleList(triangles);
-  std::vector<std::vector<int>> tri_coord_indexes;
-  for (int i = 0; i < triangles.size(); ++i) {
-    cv::Vec6f t = triangles[i];
-    if (t[0] >= 0 && t[0] <= width
-            && t[2] >= 0 && t[2] <= width
-            && t[4] >= 0 && t[4] <= width
-            && t[1] >= 0 && t[1] <= height
-            && t[3] >= 0 && t[3] <= height
-            && t[5] >= 0 && t[5] <= height) {
-      tri_coord_indexes.push_back({
-        landmark_coord_to_index_[t[0] * 10000 + t[1]],
-        landmark_coord_to_index_[t[2] * 10000 + t[3]],
-        landmark_coord_to_index_[t[4] * 10000 + t[5]],
-      });
-    }
-  }
-
-  LOG(WARNING) << "triangles size:" << std::to_string(tri_coord_indexes.size()) << " eye size: " << std::to_string(eye_size_);
-  for (int i = 0; i < tri_coord_indexes.size(); ++i) {
-    const std::vector<int> tri_coord_index = tri_coord_indexes[i];
-
-    cv::Point2f src[3] {
-       cv::Point2f(
-         new_landmark_coords_[tri_coord_index[0]].x / width,
-         new_landmark_coords_[tri_coord_index[0]].y / height),
-       cv::Point2f(
-         new_landmark_coords_[tri_coord_index[1]].x / width,
-         new_landmark_coords_[tri_coord_index[1]].y / height),
-       cv::Point2f(
-         new_landmark_coords_[tri_coord_index[2]].x / width,
-         new_landmark_coords_[tri_coord_index[2]].y / height),
-    };
-    cv::Point2f dst[3] {
-       cv::Point2f(
-         orig_landmark_coords_[tri_coord_index[0]].x / width,
-         orig_landmark_coords_[tri_coord_index[0]].y / height),
-       cv::Point2f(
-         orig_landmark_coords_[tri_coord_index[1]].x / width,
-         orig_landmark_coords_[tri_coord_index[1]].y / height),
-       cv::Point2f(
-         orig_landmark_coords_[tri_coord_index[2]].x / width,
-         orig_landmark_coords_[tri_coord_index[2]].y / height),
-    };
-
-    cv::Mat aff_mat = cv::getAffineTransform(src, dst);
-
+    const cv::Point2f center = (p1 + p2) / 2;
+    const float radius = std::sqrt(std::pow(p2.x - center.x, 2) + std::pow(p2.y - center.y, 2));
     glUniform2f(
-      glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].p1").c_str()),
-      dst[0].x,
-      dst[0].y);
-    glUniform2f(
-      glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].p2").c_str()),
-      dst[1].x,
-      dst[1].y);
-    glUniform2f(
-      glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].p3").c_str()),
-      dst[2].x,
-      dst[2].y);
-    glUniform3f(
-      glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].m1").c_str()),
-      (float)aff_mat.at<double>(0, 0),
-      (float)aff_mat.at<double>(0, 1),
-      (float)aff_mat.at<double>(0, 2));
-    glUniform3f(
-      glGetUniformLocation(program_, ("transform_data[" + std::to_string(i) + "].m2").c_str()),
-      (float)aff_mat.at<double>(1, 0),
-      (float)aff_mat.at<double>(1, 1),
-      (float)aff_mat.at<double>(1, 2));
+      glGetUniformLocation(program_, ("liquify_regions[" + std::to_string(i * liquify_regions_count_per_face) + "].center").c_str()),
+      center.x,
+      center.y);
+    glUniform1f(
+      glGetUniformLocation(program_, ("liquify_regions[" + std::to_string(i * liquify_regions_count_per_face) + "].radius").c_str()),
+      radius);
+    glUniform1f(
+      glGetUniformLocation(program_, ("liquify_regions[" + std::to_string(i * liquify_regions_count_per_face) + "].intensity").c_str()),
+      eye_size_);
   }
 
-  glUniform1i(glGetUniformLocation(program_, "transform_data_count"), tri_coord_indexes.size());
+  glUniform1i(glGetUniformLocation(program_, "liquify_regions_count"), multi_face_landmarks.size() * liquify_regions_count_per_face);
 
   // vertex storage
   GLuint vbo[2];
@@ -776,6 +638,8 @@ absl::Status AnnotationOverlayCalculator::GlSetup(CalculatorContext* cc) {
     out vec4 fragColor;
   #endif  // GL_ES
 
+  #define PI 3.1415926535897932384626433832795
+
     in vec2 sample_coordinate;
     uniform sampler2D input_frame;
     // "overlay" texture has top-left origin (OpenCV mat with annotations has
@@ -784,38 +648,37 @@ absl::Status AnnotationOverlayCalculator::GlSetup(CalculatorContext* cc) {
     uniform vec3 transparent_color;
     uniform float left_eye_top;
 
-    struct TransformData {
-      vec2 p1;
-      vec2 p2;
-      vec2 p3;
-      vec3 m1;
-      vec3 m2;
+    struct LiquifyRegion {
+      vec2 center;
+      float radius;
+      float intensity;
     };
 
-    uniform TransformData transform_data[80];
-    uniform int transform_data_count;
+    uniform LiquifyRegion liquify_regions[100];
+    uniform int liquify_regions_count;
 
-    bool isInTriangle(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
-      float A = 0.5 * (-p1.y * p2.x + p0.y * (-p1.x + p2.x) + p0.x * (p1.y - p2.y) + p1.x * p2.y);
-      float sign = A < 0.0 ? -1.0 : 1.0;
-      float s = (p0.y * p2.x - p0.x * p2.y + (p2.y - p0.y) * p.x + (p0.x - p2.x) * p.y) * sign;
-      float t = (p0.x * p1.y - p0.y * p1.x + (p0.y - p1.y) * p.x + (p1.x - p0.x) * p.y) * sign;
-      
-      return s > 0.0 && t > 0.0 && (s + t) < 2.0 * A * sign;
+    bool isInRegion(vec2 p, LiquifyRegion region) {
+      return pow(p.x - region.center.x, 2.0) + pow(p.y - region.center.y, 2.0) < pow(region.radius, 2.0);
     }
 
-    vec2 applyTransform(vec2 v, vec3 m1, vec3 m2) {
-      float newX = m1.x * v.x + m1.y * v.y + m1.z;
-      float newY = m2.x * v.x + m2.y * v.y + m2.z;
-      return vec2(newX, newY);
+    vec2 applyTransform(vec2 v, LiquifyRegion region) {
+      vec2 rv = v - region.center;
+      float r = sqrt(pow(rv.x, 2.0) + pow(rv.y, 2.0));
+      float theta = atan(rv.y, rv.x);
+      float degrees = (theta * 180.0) / PI;
+      float factor = r / region.radius;
+      r = factor * r + (1.0 - factor) * region.intensity * r;
+      theta = (degrees * PI) / 180.0;
+      vec2 newRv = vec2(r * cos(theta), r * sin(theta));
+      return newRv + region.center;
     }
 
     void main() {
       vec2 final_sample_coord = sample_coordinate;
-      for (int i = 0; i < transform_data_count; i++) {
-        TransformData t = transform_data[i];
-        if (isInTriangle(sample_coordinate, t.p1, t.p2, t.p3)) {
-          final_sample_coord = applyTransform(sample_coordinate, t.m1, t.m2);
+      for (int i = 0; i < liquify_regions_count; i++) {
+        LiquifyRegion region = liquify_regions[i];
+        if (isInRegion(sample_coordinate, region)) {
+          final_sample_coord = applyTransform(sample_coordinate, region);
           break;
         }
       }
