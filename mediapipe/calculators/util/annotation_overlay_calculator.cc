@@ -172,8 +172,6 @@ class AnnotationOverlayCalculator : public CalculatorBase {
   int width_canvas_ = 0;  // Size of overlay drawing texture canvas.
   int height_canvas_ = 0;
 #endif  // MEDIAPIPE_DISABLE_GPU
-
-  float eye_size_ = 1.0;
 };
 REGISTER_CALCULATOR(AnnotationOverlayCalculator);
 
@@ -551,35 +549,59 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
           ? empty_multi_face_landmarks
           : cc->Inputs().Tag(kMultiFaceLandmarksTag).Get<std::vector<NormalizedLandmarkList>>();
 
-  if (cc->InputSidePackets().HasTag(kEyeSizeTag)) {
-    eye_size_ = *cc->InputSidePackets().Tag(kEyeSizeTag).Get<std::unique_ptr<float>>();
-  }
+  glUniform1i(glGetUniformLocation(program_, "faceCount"), multi_face_landmarks.size());
 
-  const int liquify_regions_count_per_face = 1; // todo: 증가시키기.
+  if (cc->InputSidePackets().HasTag(kEyeSizeTag)) {
+    glUniform1f(glGetUniformLocation(program_, "eyeSize"), *cc->InputSidePackets().Tag(kEyeSizeTag).Get<std::unique_ptr<float>>());
+  }
 
   for (int i = 0; i < multi_face_landmarks.size(); ++i) {
     const NormalizedLandmarkList& landmarks = multi_face_landmarks[i];
 
-    const NormalizedLandmark& left_eye_left = landmarks.landmark(130);
+    const NormalizedLandmark& left_eye_left = landmarks.landmark(226);
     const NormalizedLandmark& left_eye_right = landmarks.landmark(243);
-    const cv::Point2f p1(left_eye_left.x(), left_eye_left.y());
-    const cv::Point2f p2(left_eye_right.x(), left_eye_right.y());
+    const NormalizedLandmark& left_eye_top = landmarks.landmark(27);
 
-    const cv::Point2f center = (p1 + p2) / 2;
-    const float radius = std::sqrt(std::pow(p2.x - center.x, 2) + std::pow(p2.y - center.y, 2));
+    cv::Point2f left = cv::Point2f(left_eye_left.x(), left_eye_left.y());
+    cv::Point2f right = cv::Point2f(left_eye_right.x(), left_eye_right.y());
+    cv::Point2f top = cv::Point2f(left_eye_top.x(), left_eye_top.y());
+    cv::Point2f center = (left + right) / 2;
+    float width = std::sqrt(std::pow(right.x - center.x, 2) + std::pow(right.y - center.y, 2));
+    float height = std::sqrt(std::pow(top.x - center.x, 2) + std::pow(top.y - center.y, 2));
+
     glUniform2f(
-      glGetUniformLocation(program_, ("liquify_regions[" + std::to_string(i * liquify_regions_count_per_face) + "].center").c_str()),
+      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].center").c_str()),
       center.x,
       center.y);
     glUniform1f(
-      glGetUniformLocation(program_, ("liquify_regions[" + std::to_string(i * liquify_regions_count_per_face) + "].radius").c_str()),
-      radius);
+      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].width").c_str()),
+      width);
     glUniform1f(
-      glGetUniformLocation(program_, ("liquify_regions[" + std::to_string(i * liquify_regions_count_per_face) + "].intensity").c_str()),
-      eye_size_);
-  }
+      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].height").c_str()),
+      height);
 
-  glUniform1i(glGetUniformLocation(program_, "liquify_regions_count"), multi_face_landmarks.size() * liquify_regions_count_per_face);
+    const NormalizedLandmark& right_eye_left = landmarks.landmark(463);
+    const NormalizedLandmark& right_eye_right = landmarks.landmark(446);
+    const NormalizedLandmark& right_eye_top = landmarks.landmark(257);
+
+    left = cv::Point2f(right_eye_left.x(), right_eye_left.y());
+    right = cv::Point2f(right_eye_right.x(), right_eye_right.y());
+    top = cv::Point2f(right_eye_top.x(), right_eye_top.y());
+    center = (left + right) / 2;
+    width = std::sqrt(std::pow(left.x - center.x, 2) + std::pow(left.y - center.y, 2));
+    height = std::sqrt(std::pow(top.x - center.x, 2) + std::pow(top.y - center.y, 2));
+
+    glUniform2f(
+      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].center").c_str()),
+      center.x,
+      center.y);
+    glUniform1f(
+      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].width").c_str()),
+      width);
+    glUniform1f(
+      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].height").c_str()),
+      height);
+  }
 
   // vertex storage
   GLuint vbo[2];
@@ -646,44 +668,53 @@ absl::Status AnnotationOverlayCalculator::GlSetup(CalculatorContext* cc) {
     // been uploaded to GPU without vertical flip)
     uniform sampler2D overlay;
     uniform vec3 transparent_color;
-    uniform float left_eye_top;
 
-    struct LiquifyRegion {
+    struct Eye {
       vec2 center;
-      float radius;
-      float intensity;
+      float width;
+      float height;
     };
 
-    uniform LiquifyRegion liquify_regions[100];
-    uniform int liquify_regions_count;
+    // 우리는 우선 최대 4명만 인식한다고 가정함.
+    uniform Eye leftEyes[4];
+    uniform Eye rightEyes[4];
+    uniform float eyeSize;
 
-    bool isInRegion(vec2 p, LiquifyRegion region) {
-      return pow(p.x - region.center.x, 2.0) + pow(p.y - region.center.y, 2.0) < pow(region.radius, 2.0);
+    uniform int faceCount;
+
+    bool isInEye(vec2 coord, Eye eye) {
+      return pow(coord.x - eye.center.x, 2.0) / pow(eye.width, 2.0) +
+          pow(coord.y - eye.center.y, 2.0) / pow(eye.height, 2.0) <= 1.0;
     }
 
-    vec2 applyTransform(vec2 v, LiquifyRegion region) {
-      vec2 rv = v - region.center;
-      float r = sqrt(pow(rv.x, 2.0) + pow(rv.y, 2.0));
-      float theta = atan(rv.y, rv.x);
-      float degrees = (theta * 180.0) / PI;
-      float factor = r / region.radius;
-      r = factor * r + (1.0 - factor) * region.intensity * r;
-      theta = (degrees * PI) / 180.0;
-      vec2 newRv = vec2(r * cos(theta), r * sin(theta));
-      return newRv + region.center;
+    vec2 applyEyeTransform(vec2 coord, Eye eye, bool isLeft) {
+      vec2 rcoord = coord - eye.center;
+      float r = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+      float theta = atan(rcoord.y, rcoord.x);
+
+      float radius = (eye.width * eye.height) / sqrt(pow(eye.width, 2.0) * pow(sin(theta), 2.0) + pow(eye.height, 2.0) * pow(cos(theta), 2.0));
+      float factor = r / radius;
+      r = factor * r + (1.0 - factor) * eyeSize  * r;
+      vec2 newRcoord = vec2(r * cos(theta), r * sin(theta));
+      return newRcoord + eye.center;
     }
 
     void main() {
-      vec2 final_sample_coord = sample_coordinate;
-      for (int i = 0; i < liquify_regions_count; i++) {
-        LiquifyRegion region = liquify_regions[i];
-        if (isInRegion(sample_coordinate, region)) {
-          final_sample_coord = applyTransform(sample_coordinate, region);
+      vec2 coord = sample_coordinate;
+      for (int i = 0; i < faceCount; i++) {
+        Eye leftEye = leftEyes[i];
+        Eye rightEye = rightEyes[i];
+
+        if (isInEye(coord, leftEye)) {
+          coord = applyEyeTransform(coord, leftEye, true);
+          break;
+        } else if (isInEye(coord, rightEye)) {
+          coord = applyEyeTransform(coord, rightEye, false);
           break;
         }
       }
 
-      vec3 image_pix = texture2D(input_frame, final_sample_coord).rgb;
+      vec3 image_pix = texture2D(input_frame, coord).rgb;
   #ifdef INPUT_FRAME_HAS_TOP_LEFT_ORIGIN
       // "input_frame" has top-left origin same as "overlay", hence overlaying
       // as is.
