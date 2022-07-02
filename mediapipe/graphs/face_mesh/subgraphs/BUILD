@@ -26,6 +26,7 @@ cc_library(
     deps = [
         "//mediapipe/calculators/core:split_proto_list_calculator",
         "//mediapipe/calculators/util:annotation_overlay_calculator",
+        "//mediapipe/calculators/util:carat_face_render_calculator",
         "//mediapipe/calculators/util:detections_to_render_data_calculator",
         "//mediapipe/calculators/util:landmarks_to_render_data_calculator",
         "//mediapipe/calculators/util:rect_to_render_data_calculator",
@@ -37,6 +38,15 @@ mediapipe_simple_subgraph(
     name = "face_renderer_gpu",
     graph = "face_renderer_gpu.pbtxt",
     register_as = "FaceRendererGpu",
+    deps = [
+        ":renderer_calculators",
+    ],
+)
+
+mediapipe_simple_subgraph(
+    name = "carat_face_renderer_gpu",
+    graph = "carat_face_renderer_gpu.pbtxt",
+    register_as = "CaratFaceRendererGpu",
     deps = [
         ":renderer_calculators",
     ],

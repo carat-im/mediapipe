@@ -57,6 +57,7 @@ cc_library(
     deps = [
         "//mediapipe/calculators/core:flow_limiter_calculator",
         "//mediapipe/graphs/face_mesh/subgraphs:face_renderer_gpu",
+        "//mediapipe/graphs/face_mesh/subgraphs:carat_face_renderer_gpu",
         "//mediapipe/modules/face_landmark:face_landmark_front_gpu",
     ],
 )
@@ -65,5 +66,12 @@ mediapipe_binary_graph(
     name = "face_mesh_mobile_gpu_binary_graph",
     graph = "face_mesh_mobile.pbtxt",
     output_name = "face_mesh_mobile_gpu.binarypb",
+    deps = [":mobile_calculators"],
+)
+
+mediapipe_binary_graph(
+    name = "carat_face_mesh_mobile_gpu_binary_graph",
+    graph = "carat_face_mesh_mobile.pbtxt",
+    output_name = "carat_face_mesh_mobile_gpu.binarypb",
     deps = [":mobile_calculators"],
 )

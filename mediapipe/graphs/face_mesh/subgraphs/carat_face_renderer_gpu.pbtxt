@@ -1,0 +1,22 @@
+# MediaPipe face mesh rendering subgraph.
+
+type: "CaratFaceRendererGpu"
+
+# GPU image. (GpuBuffer)
+input_stream: "IMAGE:input_image"
+# Collection of detected/predicted faces, each represented as a list of
+# landmarks. (std::vector<NormalizedLandmarkList>)
+input_stream: "LANDMARKS:multi_face_landmarks"
+
+input_side_packet: "EYE_SIZE:eye_size"
+
+# GPU image with rendered data. (GpuBuffer)
+output_stream: "IMAGE:output_image"
+
+node {
+  calculator: "CaratFaceRenderCalculator"
+  input_stream: "IMAGE_GPU:input_image"
+  input_stream: "MULTI_FACE_LANDMARKS:multi_face_landmarks"
+  input_side_packet: "EYE_SIZE:eye_size"
+  output_stream: "IMAGE_GPU:output_image"
+}

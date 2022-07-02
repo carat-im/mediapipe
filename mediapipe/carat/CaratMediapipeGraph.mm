@@ -3,7 +3,7 @@
 
 #include "mediapipe/framework/formats/landmark.pb.h"
 
-static NSString* const kGraphName = @"face_mesh_mobile_gpu";
+static NSString* const kGraphName = @"carat_face_mesh_mobile_gpu";
 static const char* kInputStream = "input_video";
 static const char* kOutputStream = "output_video";
 static const char* kNumFacesInputSidePacket = "num_faces";
