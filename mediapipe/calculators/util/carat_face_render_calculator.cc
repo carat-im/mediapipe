@@ -39,7 +39,26 @@ namespace {
 constexpr char kGpuBufferTag[] = "IMAGE_GPU";
 constexpr char kMultiFaceLandmarksTag[] = "MULTI_FACE_LANDMARKS";
 
+constexpr char kForeheadSizeTag[] = "FOREHEAD_SIZE";
+constexpr char kCheekboneSizeTag[] = "CHEEKBONE_SIZE";
+constexpr char kTempleSizeTag[] = "TEMPLE_SIZE";
+constexpr char kChinSizeTag[] = "CHIN_SIZE";
+constexpr char kChinHeightTag[] = "CHIN_HEIGHT";
+constexpr char kChinSharpnessTag[] = "CHIN_SHARPNESS";
 constexpr char kEyeSizeTag[] = "EYE_SIZE";
+constexpr char kEyeHeightTag[] = "EYE_HEIGHT";
+constexpr char kEyeSpacingTag[] = "EYE_SPACING";
+constexpr char kFrontEyeSizeTag[] = "FRONT_EYE_SIZE";
+constexpr char kUnderEyeSizeTag[] = "UNDER_EYE_SIZE";
+constexpr char kPupilSizeTag[] = "PUPIL_SIZE";
+constexpr char kNoseHeightTag[] = "NOSE_HEIGHT";
+constexpr char kNoseWidthTag[] = "NOSE_WIDTH";
+constexpr char kNoseBridgeSizeTag[] = "NOSE_BRIDGE_SIZE";
+constexpr char kNoseBaseSizeTag[] = "NOSE_BASE_SIZE";
+constexpr char kNoseEndSizeTag[] = "NOSE_END_SIZE";
+constexpr char kPhiltrumHeightTag[] = "PHILTRUM_HEIGHT";
+constexpr char kLipSizeTag[] = "LIP_SIZE";
+constexpr char kLipEndUpTag[] = "LIP_END_UP";
 
 enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
 
@@ -100,8 +119,65 @@ absl::Status CaratFaceRenderCalculator::GetContract(CalculatorContract* cc) {
     cc->Inputs().Tag(kMultiFaceLandmarksTag).Set<std::vector<NormalizedLandmarkList>>();
   }
 
+  if (cc->InputSidePackets().HasTag(kForeheadSizeTag)) {
+    cc->InputSidePackets().Tag(kForeheadSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kCheekboneSizeTag)) {
+    cc->InputSidePackets().Tag(kCheekboneSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kTempleSizeTag)) {
+    cc->InputSidePackets().Tag(kTempleSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kChinSizeTag)) {
+    cc->InputSidePackets().Tag(kChinSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kChinHeightTag)) {
+    cc->InputSidePackets().Tag(kChinHeightTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kChinSharpnessTag)) {
+    cc->InputSidePackets().Tag(kChinSharpnessTag).Set<std::unique_ptr<float>>();
+  }
   if (cc->InputSidePackets().HasTag(kEyeSizeTag)) {
     cc->InputSidePackets().Tag(kEyeSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kEyeHeightTag)) {
+    cc->InputSidePackets().Tag(kEyeHeightTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kEyeSpacingTag)) {
+    cc->InputSidePackets().Tag(kEyeSpacingTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kFrontEyeSizeTag)) {
+    cc->InputSidePackets().Tag(kFrontEyeSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kUnderEyeSizeTag)) {
+    cc->InputSidePackets().Tag(kUnderEyeSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kPupilSizeTag)) {
+    cc->InputSidePackets().Tag(kPupilSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kNoseHeightTag)) {
+    cc->InputSidePackets().Tag(kNoseHeightTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kNoseWidthTag)) {
+    cc->InputSidePackets().Tag(kNoseWidthTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kNoseBridgeSizeTag)) {
+    cc->InputSidePackets().Tag(kNoseBridgeSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kNoseBaseSizeTag)) {
+    cc->InputSidePackets().Tag(kNoseBaseSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kNoseEndSizeTag)) {
+    cc->InputSidePackets().Tag(kNoseEndSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kPhiltrumHeightTag)) {
+    cc->InputSidePackets().Tag(kPhiltrumHeightTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kLipSizeTag)) {
+    cc->InputSidePackets().Tag(kLipSizeTag).Set<std::unique_ptr<float>>();
+  }
+  if (cc->InputSidePackets().HasTag(kLipEndUpTag)) {
+    cc->InputSidePackets().Tag(kLipEndUpTag).Set<std::unique_ptr<float>>();
   }
 
   return absl::OkStatus();
@@ -218,7 +294,27 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
 
   glUniform1i(glGetUniformLocation(program_, "faceCount"), multi_face_landmarks.size());
 
+  glUniform1f(glGetUniformLocation(program_, "foreheadSize"), *cc->InputSidePackets().Tag(kForeheadSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "cheekboneSize"), *cc->InputSidePackets().Tag(kCheekboneSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "templeSize"), *cc->InputSidePackets().Tag(kTempleSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "chinSize"), *cc->InputSidePackets().Tag(kChinSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "chinHeight"), *cc->InputSidePackets().Tag(kChinHeightTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "chinSharpness"), *cc->InputSidePackets().Tag(kChinSharpnessTag).Get<std::unique_ptr<float>>());
   glUniform1f(glGetUniformLocation(program_, "eyeSize"), *cc->InputSidePackets().Tag(kEyeSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "eyeHeight"), *cc->InputSidePackets().Tag(kEyeHeightTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "eyeSpacing"), *cc->InputSidePackets().Tag(kEyeSpacingTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "frontEyeSize"), *cc->InputSidePackets().Tag(kFrontEyeSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "underEyeSize"), *cc->InputSidePackets().Tag(kUnderEyeSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "pupilSize"), *cc->InputSidePackets().Tag(kPupilSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "noseHeight"), *cc->InputSidePackets().Tag(kNoseHeightTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "noseWidth"), *cc->InputSidePackets().Tag(kNoseWidthTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "noseBridgeSize"), *cc->InputSidePackets().Tag(kNoseBridgeSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "noseBaseSize"), *cc->InputSidePackets().Tag(kNoseBaseSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "noseEndSize"), *cc->InputSidePackets().Tag(kNoseEndSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "philtrumHeight"), *cc->InputSidePackets().Tag(kPhiltrumHeightTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "lipSize"), *cc->InputSidePackets().Tag(kLipSizeTag).Get<std::unique_ptr<float>>());
+  glUniform1f(glGetUniformLocation(program_, "lipEndUp"), *cc->InputSidePackets().Tag(kLipEndUpTag).Get<std::unique_ptr<float>>());
+
 
   for (int i = 0; i < multi_face_landmarks.size(); ++i) {
     const NormalizedLandmarkList& landmarks = multi_face_landmarks[i];
@@ -315,7 +411,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   };
 
   constexpr char kFragSrcBody[] = R"(
-  DEFAULT_PRECISION(mediump, float)
+  DEFAULT_PRECISION(highp, float)
   #ifdef GL_ES
     #define fragColor gl_FragColor
   #else
@@ -327,6 +423,8 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   in vec2 sample_coordinate;
   uniform sampler2D input_frame;
 
+  uniform int faceCount;
+
   struct Eye {
     vec2 center;
     float width;
@@ -336,9 +434,27 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   // 우리는 우선 최대 4명만 인식한다고 가정함.
   uniform Eye leftEyes[4];
   uniform Eye rightEyes[4];
-  uniform float eyeSize;
 
-  uniform int faceCount;
+  uniform float foreheadSize;
+  uniform float cheekboneSize;
+  uniform float templeSize;
+  uniform float chinSize;
+  uniform float chinHeight;
+  uniform float chinSharpness;
+  uniform float eyeSize;
+  uniform float eyeHeight;
+  uniform float eyeSpacing;
+  uniform float frontEyeSize;
+  uniform float underEyeSize;
+  uniform float pupilSize;
+  uniform float noseHeight;
+  uniform float noseWidth;
+  uniform float noseBridgeSize;
+  uniform float noseBaseSize;
+  uniform float noseEndSize;
+  uniform float philtrumHeight;
+  uniform float lipSize;
+  uniform float lipEndUp;
 
   bool isInEye(vec2 coord, Eye eye) {
     return pow(coord.x - eye.center.x, 2.0) / pow(eye.width, 2.0) +
@@ -353,8 +469,9 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float radius = (eye.width * eye.height) / sqrt(pow(eye.width, 2.0) * pow(sin(theta), 2.0) + pow(eye.height, 2.0) * pow(cos(theta), 2.0));
     float factor = r / radius;
     r = factor * r + (1.0 - factor) * eyeSize  * r;
-    vec2 newRcoord = vec2(r * cos(theta), r * sin(theta));
-    return newRcoord + eye.center;
+
+    rcoord = vec2(r * cos(theta), r * sin(theta));
+    return rcoord + eye.center;
   }
 
   void main() {
