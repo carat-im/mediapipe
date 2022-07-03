@@ -319,7 +319,7 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
   for (int i = 0; i < multi_face_landmarks.size(); ++i) {
     const NormalizedLandmarkList& landmarks = multi_face_landmarks[i];
 
-    const NormalizedLandmark& left_eye_left = landmarks.landmark(226);
+    const NormalizedLandmark& left_eye_left = landmarks.landmark(130);
     const NormalizedLandmark& left_eye_right = landmarks.landmark(243);
     const NormalizedLandmark& left_eye_top = landmarks.landmark(27);
 
@@ -327,41 +327,59 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     cv::Point2f right = cv::Point2f(left_eye_right.x(), left_eye_right.y());
     cv::Point2f top = cv::Point2f(left_eye_top.x(), left_eye_top.y());
     cv::Point2f center = (left + right) / 2;
-    float width = std::sqrt(std::pow(right.x - center.x, 2) + std::pow(right.y - center.y, 2));
-    float height = std::sqrt(std::pow(top.x - center.x, 2) + std::pow(top.y - center.y, 2));
+
+    float r1 = std::sqrt(std::pow(right.x - center.x, 2) + std::pow(right.y - center.y, 2));
+    float r2 = std::sqrt(std::pow(top.x - center.x, 2) + std::pow(top.y - center.y, 2));
+    float biggerR1 = r1 * 1.2;
+    float biggerR2 = r2 * 1.1;
 
     glUniform2f(
       glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].center").c_str()),
       center.x,
       center.y);
     glUniform1f(
-      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].width").c_str()),
-      width);
+      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].r1").c_str()),
+      r1);
     glUniform1f(
-      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].height").c_str()),
-      height);
+      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].r2").c_str()),
+      r2);
+    glUniform1f(
+      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].biggerR1").c_str()),
+      biggerR1);
+    glUniform1f(
+      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].biggerR2").c_str()),
+      biggerR2);
 
     const NormalizedLandmark& right_eye_left = landmarks.landmark(463);
-    const NormalizedLandmark& right_eye_right = landmarks.landmark(446);
+    const NormalizedLandmark& right_eye_right = landmarks.landmark(359);
     const NormalizedLandmark& right_eye_top = landmarks.landmark(257);
 
     left = cv::Point2f(right_eye_left.x(), right_eye_left.y());
     right = cv::Point2f(right_eye_right.x(), right_eye_right.y());
     top = cv::Point2f(right_eye_top.x(), right_eye_top.y());
     center = (left + right) / 2;
-    width = std::sqrt(std::pow(left.x - center.x, 2) + std::pow(left.y - center.y, 2));
-    height = std::sqrt(std::pow(top.x - center.x, 2) + std::pow(top.y - center.y, 2));
+
+    r1 = std::sqrt(std::pow(left.x - center.x, 2) + std::pow(left.y - center.y, 2));
+    r2 = std::sqrt(std::pow(top.x - center.x, 2) + std::pow(top.y - center.y, 2));
+    biggerR1 = r1 * 1.2;
+    biggerR2 = r2 * 1.1;
 
     glUniform2f(
       glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].center").c_str()),
       center.x,
       center.y);
     glUniform1f(
-      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].width").c_str()),
-      width);
+      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].r1").c_str()),
+      r1);
     glUniform1f(
-      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].height").c_str()),
-      height);
+      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].r2").c_str()),
+      r2);
+    glUniform1f(
+      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].biggerR1").c_str()),
+      biggerR1);
+    glUniform1f(
+      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].biggerR2").c_str()),
+      biggerR2);
   }
 
   // vertex storage
@@ -427,8 +445,10 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
   struct Eye {
     vec2 center;
-    float width;
-    float height;
+    float r1;
+    float r2;
+    float biggerR1;
+    float biggerR2;
   };
 
   // 우리는 우선 최대 4명만 인식한다고 가정함.
@@ -456,22 +476,61 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   uniform float lipSize;
   uniform float lipEndUp;
 
+  bool isInBiggerEye(vec2 coord, Eye eye) {
+    return pow(coord.x - eye.center.x, 2.0) / pow(eye.biggerR1, 2.0) +
+        pow(coord.y - eye.center.y, 2.0) / pow(eye.biggerR2, 2.0) <= 1.0;
+  }
+
   bool isInEye(vec2 coord, Eye eye) {
-    return pow(coord.x - eye.center.x, 2.0) / pow(eye.width, 2.0) +
-        pow(coord.y - eye.center.y, 2.0) / pow(eye.height, 2.0) <= 1.0;
+    return pow(coord.x - eye.center.x, 2.0) / pow(eye.r1, 2.0) +
+        pow(coord.y - eye.center.y, 2.0) / pow(eye.r2, 2.0) <= 1.0;
+  }
+
+  vec2 applyEyeSize(vec2 coord, Eye eye) {
+    if (!isInEye(coord, eye)) {
+      return vec2(0.0, 0.0);
+    }
+
+    vec2 rcoord = coord - eye.center;
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (eye.r1 * eye.r2) / sqrt(pow(eye.r1, 2.0) * pow(sin(theta), 2.0) + pow(eye.r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = (1.0 / eyeSize) * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return newRcoord - rcoord;
+  }
+
+  vec2 applyEyeSpacing(vec2 coord, Eye eye, bool isLeft) {
+    float maxMoveDist = (eyeSpacing - 1.0) * eye.r1;
+    if (!isLeft) {
+      maxMoveDist = maxMoveDist * -1.0;
+    }
+
+    if (isInEye(coord, eye)) {
+      return vec2(maxMoveDist, 0.0);
+    } else {
+      vec2 rcoord = coord - eye.center;
+      float theta = atan(rcoord.y, rcoord.x);
+
+      float smallCircleDist = (eye.r1 * eye.r2) / sqrt(pow(eye.r1, 2.0) * pow(sin(theta), 2.0) + pow(eye.r2, 2.0) * pow(cos(theta), 2.0));
+      float bigCircleDist = (eye.biggerR1 * eye.biggerR2) / sqrt(pow(eye.biggerR1, 2.0) * pow(sin(theta), 2.0) + pow(eye.biggerR2, 2.0) * pow(cos(theta), 2.0));
+      float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+
+      return vec2((bigCircleDist - dist) / (bigCircleDist - smallCircleDist) * maxMoveDist, 0.0);
+    }
   }
 
   vec2 applyEyeTransform(vec2 coord, Eye eye, bool isLeft) {
-    vec2 rcoord = coord - eye.center;
-    float r = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
-    float theta = atan(rcoord.y, rcoord.x);
+    vec2 ret = coord;
+    ret = ret + applyEyeSize(coord, eye);
+    ret = ret + applyEyeSpacing(ret, eye, isLeft);
 
-    float radius = (eye.width * eye.height) / sqrt(pow(eye.width, 2.0) * pow(sin(theta), 2.0) + pow(eye.height, 2.0) * pow(cos(theta), 2.0));
-    float factor = r / radius;
-    r = factor * r + (1.0 - factor) * eyeSize  * r;
-
-    rcoord = vec2(r * cos(theta), r * sin(theta));
-    return rcoord + eye.center;
+    return ret;
   }
 
   void main() {
@@ -480,10 +539,10 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
       Eye leftEye = leftEyes[i];
       Eye rightEye = rightEyes[i];
 
-      if (isInEye(coord, leftEye)) {
+      if (isInBiggerEye(coord, leftEye)) {
         coord = applyEyeTransform(coord, leftEye, true);
         break;
-      } else if (isInEye(coord, rightEye)) {
+      } else if (isInBiggerEye(coord, rightEye)) {
         coord = applyEyeTransform(coord, rightEye, false);
         break;
       }
