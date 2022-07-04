@@ -525,10 +525,30 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     }
   }
 
+  vec2 applyEyeHeight(vec2 coord, Eye eye) {
+    if (!isInEye(coord, eye)) {
+      return vec2(0.0, 0.0);
+    }
+
+    vec2 rcoord = coord - eye.center;
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (eye.r1 * eye.r2) / sqrt(pow(eye.r1, 2.0) * pow(sin(theta), 2.0) + pow(eye.r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = (1.0 / eyeHeight) * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return vec2(0.0, newRcoord.y - rcoord.y);
+  }
+
   vec2 applyEyeTransform(vec2 coord, Eye eye, bool isLeft) {
     vec2 ret = coord;
-    ret = ret + applyEyeSize(coord, eye);
     ret = ret + applyEyeSpacing(ret, eye, isLeft);
+    ret = ret + applyEyeSize(ret, eye);
+    ret = ret + applyEyeHeight(ret, eye);
 
     return ret;
   }
