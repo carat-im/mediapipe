@@ -476,18 +476,17 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   uniform float lipSize;
   uniform float lipEndUp;
 
-  bool isInBiggerEye(vec2 coord, Eye eye) {
-    return pow(coord.x - eye.center.x, 2.0) / pow(eye.biggerR1, 2.0) +
-        pow(coord.y - eye.center.y, 2.0) / pow(eye.biggerR2, 2.0) <= 1.0;
+  bool isInEllipse(vec2 coord, vec2 center, float r1, float r2) {
+    return pow(coord.x - center.x, 2.0) / pow(r1, 2.0) +
+        pow(coord.y - center.y, 2.0) / pow(r2, 2.0) <= 1.0;
   }
 
-  bool isInEye(vec2 coord, Eye eye) {
-    return pow(coord.x - eye.center.x, 2.0) / pow(eye.r1, 2.0) +
-        pow(coord.y - eye.center.y, 2.0) / pow(eye.r2, 2.0) <= 1.0;
+  bool isInCircle(vec2 coord, vec2 center, float r) {
+    return pow(coord.x - center.x, 2.0) + pow(coord.y - center.y, 2.0) < pow(r, 2.0);
   }
 
   vec2 applyEyeSize(vec2 coord, Eye eye) {
-    if (!isInEye(coord, eye)) {
+    if (!isInEllipse(coord, eye.center, eye.r1, eye.r2)) {
       return vec2(0.0, 0.0);
     }
 
@@ -506,12 +505,16 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyEyeSpacing(vec2 coord, Eye eye, bool isLeft) {
+    if (!isInEllipse(coord, eye.center, eye.biggerR1, eye.biggerR2)) {
+      return vec2(0.0, 0.0);
+    }
+
     float maxMoveDist = (eyeSpacing - 1.0) * eye.r1;
     if (!isLeft) {
       maxMoveDist = maxMoveDist * -1.0;
     }
 
-    if (isInEye(coord, eye)) {
+    if (isInEllipse(coord, eye.center, eye.r1, eye.r2)) {
       return vec2(maxMoveDist, 0.0);
     } else {
       vec2 rcoord = coord - eye.center;
@@ -526,7 +529,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyEyeHeight(vec2 coord, Eye eye) {
-    if (!isInEye(coord, eye)) {
+    if (!isInEllipse(coord, eye.center, eye.r1, eye.r2)) {
       return vec2(0.0, 0.0);
     }
 
@@ -544,11 +547,42 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return vec2(0.0, newRcoord.y - rcoord.y);
   }
 
+  vec2 applyFrontEyeSize(vec2 coord, Eye eye, bool isLeft) {
+    vec2 center;
+    float r1;
+    if (isLeft) {
+      center = vec2(eye.center.x + eye.biggerR1, eye.center.y);
+      r1 = (center.x - eye.center.x) / 2.0;
+    } else {
+      center = vec2(eye.center.x - eye.biggerR1, eye.center.y);
+      r1 = (eye.center.x - center.x) / 2.0;
+    }
+    float r2 = eye.r2;
+
+    if (!isInEllipse(coord, center, r1, r2)) {
+      return vec2(0.0, 0.0);
+    }
+
+    vec2 rcoord = coord - center;
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = frontEyeSize * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return newRcoord - rcoord;
+  }
+
   vec2 applyEyeTransform(vec2 coord, Eye eye, bool isLeft) {
     vec2 ret = coord;
     ret = ret + applyEyeSpacing(ret, eye, isLeft);
     ret = ret + applyEyeSize(ret, eye);
     ret = ret + applyEyeHeight(ret, eye);
+    ret = ret + applyFrontEyeSize(ret, eye, isLeft);
 
     return ret;
   }
@@ -558,14 +592,8 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     for (int i = 0; i < faceCount; i++) {
       Eye leftEye = leftEyes[i];
       Eye rightEye = rightEyes[i];
-
-      if (isInBiggerEye(coord, leftEye)) {
-        coord = applyEyeTransform(coord, leftEye, true);
-        break;
-      } else if (isInBiggerEye(coord, rightEye)) {
-        coord = applyEyeTransform(coord, rightEye, false);
-        break;
-      }
+      coord = applyEyeTransform(coord, leftEye, true);
+      coord = applyEyeTransform(coord, rightEye, false);
     }
 
     vec3 out_pix = texture2D(input_frame, coord).rgb;
