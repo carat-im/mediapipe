@@ -411,14 +411,33 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       right_eye_iris_top.x(),
       right_eye_iris_top.y());
 
-    const NormalizedLandmark& nose_center = landmarks.landmark(4);
+    const NormalizedLandmark& nose_highest_center = landmarks.landmark(6);
+    const NormalizedLandmark& nose_high_center = landmarks.landmark(197);
+    const NormalizedLandmark& nose_center = landmarks.landmark(195);
+    const NormalizedLandmark& nose_low_center = landmarks.landmark(5);
+    const NormalizedLandmark& nose_lowest_center = landmarks.landmark(4);
     const NormalizedLandmark& nose_left = landmarks.landmark(203);
     const NormalizedLandmark& nose_right = landmarks.landmark(423);
-    const NormalizedLandmark& nose_top = landmarks.landmark(197);
+    glUniform2f(
+      glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].highestCenter").c_str()),
+      nose_highest_center.x(),
+      nose_highest_center.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].highCenter").c_str()),
+      nose_high_center.x(),
+      nose_high_center.y());
     glUniform2f(
       glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].center").c_str()),
       nose_center.x(),
       nose_center.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].lowCenter").c_str()),
+      nose_low_center.x(),
+      nose_low_center.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].lowestCenter").c_str()),
+      nose_lowest_center.x(),
+      nose_lowest_center.y());
     glUniform2f(
       glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].left").c_str()),
       nose_left.x(),
@@ -427,10 +446,6 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].right").c_str()),
       nose_right.x(),
       nose_right.y());
-    glUniform2f(
-      glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].top").c_str()),
-      nose_top.x(),
-      nose_top.y());
   }
 
   // vertex storage
@@ -507,10 +522,13 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   };
 
   struct Nose {
+    vec2 highestCenter;
+    vec2 highCenter;
     vec2 center;
+    vec2 lowCenter;
+    vec2 lowestCenter;
     vec2 left;
     vec2 right;
-    vec2 top;
   };
 
   // 우리는 우선 최대 4명만 인식한다고 가정함.
@@ -756,23 +774,21 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyNoseHeight(vec2 coord, Nose nose) {
-    // todo: 카메라 각도에 대응하려면, nose.left와 nose.right중 더 가까운 곳으로.
-    // 눈쪽도 비슷한 처리를 해주어야 할듯.
-    float r1 = dist(nose.center, nose.left);
-    float r2 = dist(nose.center, nose.top);
+    float r1 = max(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right));
+    float r2 = dist(nose.lowestCenter, nose.highCenter);
     float biggerR1 = r1 * 1.8;
-    float biggerR2 = r2 * 1.2;
+    float biggerR2 = dist(nose.lowestCenter, nose.highestCenter);
 
-    if (!isInEllipse(coord, nose.center, biggerR1, biggerR2)) {
+    if (!isInEllipse(coord, nose.lowestCenter, biggerR1, biggerR2)) {
       return vec2(0.0, 0.0);
     }
 
     float maxMoveDist = (noseHeight - 1.0) * r2;
 
-    if (isInEllipse(coord, nose.center, r1, r2)) {
+    if (isInEllipse(coord, nose.lowestCenter, r1, r2)) {
       return vec2(0.0, maxMoveDist);
     } else {
-      vec2 rcoord = coord - nose.center;
+      vec2 rcoord = coord - nose.lowestCenter;
       float theta = atan(rcoord.y, rcoord.x);
 
       float smallCircleDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
@@ -784,14 +800,14 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyNoseWidth(vec2 coord, Nose nose) {
-    float r1 = dist(nose.center, nose.left);
-    float r2 = dist(nose.center, nose.top);
+    float r1 = min(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right));
+    float r2 = dist(nose.lowestCenter, nose.highCenter);
 
-    if (!isInEllipse(coord, nose.center, r1, r2)) {
+    if (!isInEllipse(coord, nose.lowestCenter, r1, r2)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - nose.center;
+    vec2 rcoord = coord - nose.lowestCenter;
     float theta = atan(rcoord.y, rcoord.x);
 
     float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
