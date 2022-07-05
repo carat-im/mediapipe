@@ -410,6 +410,27 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].irisTop").c_str()),
       right_eye_iris_top.x(),
       right_eye_iris_top.y());
+
+    const NormalizedLandmark& nose_center = landmarks.landmark(4);
+    const NormalizedLandmark& nose_left = landmarks.landmark(102);
+    const NormalizedLandmark& nose_right = landmarks.landmark(331);
+    const NormalizedLandmark& nose_top = landmarks.landmark(197);
+    glUniform2f(
+      glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].center").c_str()),
+      nose_center.x(),
+      nose_center.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].left").c_str()),
+      nose_left.x(),
+      nose_left.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].right").c_str()),
+      nose_right.x(),
+      nose_right.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].top").c_str()),
+      nose_top.x(),
+      nose_top.y());
   }
 
   // vertex storage
@@ -485,9 +506,17 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     vec2 irisTop;
   };
 
+  struct Nose {
+    vec2 center;
+    vec2 left;
+    vec2 right;
+    vec2 top;
+  };
+
   // 우리는 우선 최대 4명만 인식한다고 가정함.
   uniform Eye leftEyes[4];
   uniform Eye rightEyes[4];
+  uniform Nose noses[4];
 
   uniform float foreheadSize;
   uniform float cheekboneSize;
@@ -670,7 +699,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return newRcoord - rcoord;
   }
 
-  vec2 applyEyeTransform(vec2 coord, Eye eye, bool isLeft) {
+  vec2 applyEyeTransforms(vec2 coord, Eye eye, bool isLeft) {
     vec2 ret = coord;
     ret = ret + applyEyeSpacing(ret, eye, isLeft);
     ret = ret + applyEyeSize(ret, eye);
@@ -682,13 +711,95 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return ret;
   }
 
+  float rectIntersectionDist(vec2 center, float r1, float r2, float theta) {
+    float twoPI = PI * 2.0;
+
+    while (theta < -PI) {
+      theta = theta + twoPI;
+    }
+
+    while (theta > PI) {
+      theta = theta - twoPI;
+    }
+
+    float rectAtan = atan(r2, r1);
+    float tanTheta = tan(theta);
+    int region;
+    if ((theta > -rectAtan) && (theta <= rectAtan)) {
+        region = 1;
+    } else if ((theta > rectAtan) && (theta <= (PI - rectAtan))) {
+        region = 2;
+    } else if ((theta > (PI - rectAtan)) || (theta <= -(PI - rectAtan))) {
+        region = 3;
+    } else {
+        region = 4;
+    }
+  
+    vec2 edgePoint = center;
+    int xFactor = 1;
+    int yFactor = 1;
+    if (region == 1 || region == 2) {
+      yFactor = -1;
+    } else {
+      xFactor = -1;
+    }
+
+    if (region == 1 || region == 3) {
+      edgePoint.x = edgePoint.x + float(xFactor) * r1;
+      edgePoint.y = edgePoint.y + float(yFactor) * r1 * tanTheta;
+    } else {
+      edgePoint.x = edgePoint.x + float(xFactor) * r2 * tanTheta;
+      edgePoint.y = edgePoint.y + float(yFactor) * r2;
+    }
+
+    return dist(center, edgePoint);
+  }
+
+  vec2 applyNoseHeight(vec2 coord, Nose nose) {
+    // todo: 카메라 각도에 대응하려면, nose.left와 nose.right중 더 가까운 곳으로.
+    // 눈쪽도 비슷한 처리를 해주어야 할듯.
+    float r1 = dist(nose.center, nose.left);
+    float r2 = dist(nose.center, nose.top);
+    float biggerR1 = r1 * 1.8;
+    float biggerR2 = r2 * 1.2;
+
+    if (!isInEllipse(coord, nose.center, biggerR1, biggerR2)) {
+      return vec2(0.0, 0.0);
+    }
+
+    float maxMoveDist = (noseHeight - 1.0) * r2;
+
+    if (isInEllipse(coord, nose.center, r1, r2)) {
+      return vec2(0.0, maxMoveDist);
+    } else {
+      vec2 rcoord = coord - nose.center;
+      float theta = atan(rcoord.y, rcoord.x);
+
+      float smallCircleDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+      float bigCircleDist = (biggerR1 * biggerR2) / sqrt(pow(biggerR1, 2.0) * pow(sin(theta), 2.0) + pow(biggerR2, 2.0) * pow(cos(theta), 2.0));
+      float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+
+      return vec2(0.0, (bigCircleDist - dist) / (bigCircleDist - smallCircleDist) * maxMoveDist);
+    }
+  }
+
+  vec2 applyNoseTransforms(vec2 coord, Nose nose) {
+    vec2 ret = coord;
+    ret = ret + applyNoseHeight(ret, nose);
+
+    return ret;
+  }
+
   void main() {
     vec2 coord = sample_coordinate;
     for (int i = 0; i < faceCount; i++) {
       Eye leftEye = leftEyes[i];
       Eye rightEye = rightEyes[i];
-      coord = applyEyeTransform(coord, leftEye, true);
-      coord = applyEyeTransform(coord, rightEye, false);
+      coord = applyEyeTransforms(coord, leftEye, true);
+      coord = applyEyeTransforms(coord, rightEye, false);
+
+      Nose nose = noses[i];
+      coord = applyNoseTransforms(coord, nose);
     }
 
     vec3 out_pix = texture2D(input_frame, coord).rgb;
