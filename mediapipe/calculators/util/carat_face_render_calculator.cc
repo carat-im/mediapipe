@@ -621,7 +621,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return vec2(newRcoord.x - rcoord.x, 0.0);
   }
 
-  vec2 applyUnderEyeSize(vec2 coord, Eye eye, bool isLeft) {
+  vec2 applyUnderEyeSize(vec2 coord, Eye eye) {
     vec2 center = (eye.center + eye.back) / 2.0;
     float r1 = dist(center, eye.center);
     float r2 = dist(center, eye.top);
@@ -645,13 +645,39 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return vec2(0.0, newRcoord.y - rcoord.y);
   }
 
+  vec2 applyPupilSize(vec2 coord, Eye eye) {
+    float r1 = dist(eye.irisCenter, eye.irisRight);
+    float r2 = dist(eye.irisCenter, eye.irisTop);
+    float adder = r1 * 0.2;
+    r1 = r1 + adder;
+    r2 = r2 + adder;
+
+    if (!isInEllipse(coord, eye.irisCenter, r1, r2)) {
+      return vec2(0.0, 0.0);
+    }
+
+    vec2 rcoord = coord - eye.irisCenter;
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = 1.0 / pupilSize * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return newRcoord - rcoord;
+  }
+
   vec2 applyEyeTransform(vec2 coord, Eye eye, bool isLeft) {
     vec2 ret = coord;
     ret = ret + applyEyeSpacing(ret, eye, isLeft);
     ret = ret + applyEyeSize(ret, eye);
     ret = ret + applyEyeHeight(ret, eye);
     ret = ret + applyFrontEyeSize(ret, eye, isLeft);
-    ret = ret + applyUnderEyeSize(ret, eye, isLeft);
+    ret = ret + applyUnderEyeSize(ret, eye);
+    ret = ret + applyPupilSize(ret, eye);
 
     return ret;
   }
