@@ -412,8 +412,8 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       right_eye_iris_top.y());
 
     const NormalizedLandmark& nose_center = landmarks.landmark(4);
-    const NormalizedLandmark& nose_left = landmarks.landmark(102);
-    const NormalizedLandmark& nose_right = landmarks.landmark(331);
+    const NormalizedLandmark& nose_left = landmarks.landmark(203);
+    const NormalizedLandmark& nose_right = landmarks.landmark(423);
     const NormalizedLandmark& nose_top = landmarks.landmark(197);
     glUniform2f(
       glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].center").c_str()),
@@ -550,6 +550,50 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
   float dist(vec2 v1, vec2 v2) {
     return sqrt(pow(v2.x - v1.x, 2.0) + pow(v2.y - v1.y, 2.0));
+  }
+
+  float rectIntersectionDist(vec2 center, float r1, float r2, float theta) {
+    float twoPI = PI * 2.0;
+
+    while (theta < -PI) {
+      theta = theta + twoPI;
+    }
+
+    while (theta > PI) {
+      theta = theta - twoPI;
+    }
+
+    float rectAtan = atan(r2, r1);
+    float tanTheta = tan(theta);
+    int region;
+    if ((theta > -rectAtan) && (theta <= rectAtan)) {
+        region = 1;
+    } else if ((theta > rectAtan) && (theta <= (PI - rectAtan))) {
+        region = 2;
+    } else if ((theta > (PI - rectAtan)) || (theta <= -(PI - rectAtan))) {
+        region = 3;
+    } else {
+        region = 4;
+    }
+  
+    vec2 edgePoint = center;
+    int xFactor = 1;
+    int yFactor = 1;
+    if (region == 1 || region == 2) {
+      yFactor = -1;
+    } else {
+      xFactor = -1;
+    }
+
+    if (region == 1 || region == 3) {
+      edgePoint.x = edgePoint.x + float(xFactor) * r1;
+      edgePoint.y = edgePoint.y + float(yFactor) * r1 * tanTheta;
+    } else {
+      edgePoint.x = edgePoint.x + float(xFactor) * r2 * tanTheta;
+      edgePoint.y = edgePoint.y + float(yFactor) * r2;
+    }
+
+    return dist(center, edgePoint);
   }
 
   vec2 applyEyeSize(vec2 coord, Eye eye) {
@@ -711,50 +755,6 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return ret;
   }
 
-  float rectIntersectionDist(vec2 center, float r1, float r2, float theta) {
-    float twoPI = PI * 2.0;
-
-    while (theta < -PI) {
-      theta = theta + twoPI;
-    }
-
-    while (theta > PI) {
-      theta = theta - twoPI;
-    }
-
-    float rectAtan = atan(r2, r1);
-    float tanTheta = tan(theta);
-    int region;
-    if ((theta > -rectAtan) && (theta <= rectAtan)) {
-        region = 1;
-    } else if ((theta > rectAtan) && (theta <= (PI - rectAtan))) {
-        region = 2;
-    } else if ((theta > (PI - rectAtan)) || (theta <= -(PI - rectAtan))) {
-        region = 3;
-    } else {
-        region = 4;
-    }
-  
-    vec2 edgePoint = center;
-    int xFactor = 1;
-    int yFactor = 1;
-    if (region == 1 || region == 2) {
-      yFactor = -1;
-    } else {
-      xFactor = -1;
-    }
-
-    if (region == 1 || region == 3) {
-      edgePoint.x = edgePoint.x + float(xFactor) * r1;
-      edgePoint.y = edgePoint.y + float(yFactor) * r1 * tanTheta;
-    } else {
-      edgePoint.x = edgePoint.x + float(xFactor) * r2 * tanTheta;
-      edgePoint.y = edgePoint.y + float(yFactor) * r2;
-    }
-
-    return dist(center, edgePoint);
-  }
-
   vec2 applyNoseHeight(vec2 coord, Nose nose) {
     // todo: 카메라 각도에 대응하려면, nose.left와 nose.right중 더 가까운 곳으로.
     // 눈쪽도 비슷한 처리를 해주어야 할듯.
@@ -783,9 +783,32 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     }
   }
 
+  vec2 applyNoseWidth(vec2 coord, Nose nose) {
+    float r1 = dist(nose.center, nose.left);
+    float r2 = dist(nose.center, nose.top);
+
+    if (!isInEllipse(coord, nose.center, r1, r2)) {
+      return vec2(0.0, 0.0);
+    }
+
+    vec2 rcoord = coord - nose.center;
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = (1.0 / noseWidth) * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return vec2(newRcoord.x - rcoord.x, 0.0);
+  }
+
   vec2 applyNoseTransforms(vec2 coord, Nose nose) {
     vec2 ret = coord;
     ret = ret + applyNoseHeight(ret, nose);
+    ret = ret + applyNoseWidth(ret, nose);
 
     return ret;
   }
