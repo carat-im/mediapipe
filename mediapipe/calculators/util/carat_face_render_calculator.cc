@@ -333,6 +333,10 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       (left_eye_left.x() + left_eye_right.x()) / 2,
       (left_eye_left.y() + left_eye_right.y()) / 2);
     glUniform2f(
+      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].back").c_str()),
+      left_eye_left.x(),
+      left_eye_left.y());
+    glUniform2f(
       glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].front").c_str()),
       left_eye_right.x(),
       left_eye_right.y());
@@ -374,6 +378,10 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].center").c_str()),
       (right_eye_left.x() + right_eye_right.x()) / 2,
       (right_eye_left.y() + right_eye_right.y()) / 2);
+    glUniform2f(
+      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].back").c_str()),
+      right_eye_right.x(),
+      right_eye_right.y());
     glUniform2f(
       glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].front").c_str()),
       right_eye_left.x(),
@@ -467,6 +475,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
   struct Eye {
     vec2 center;
+    vec2 back;
     vec2 front;
     vec2 top;
     vec2 farFront;
@@ -612,12 +621,37 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return vec2(newRcoord.x - rcoord.x, 0.0);
   }
 
+  vec2 applyUnderEyeSize(vec2 coord, Eye eye, bool isLeft) {
+    vec2 center = (eye.center + eye.back) / 2.0;
+    float r1 = dist(center, eye.center);
+    float r2 = dist(center, eye.top);
+
+    vec2 rcoord = coord - center;
+
+    if (!isInEllipse(coord, center, r1, r2) || rcoord.y < 0.0) {
+      return vec2(0.0, 0.0);
+    }
+
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = 1.0 / underEyeSize * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return vec2(0.0, newRcoord.y - rcoord.y);
+  }
+
   vec2 applyEyeTransform(vec2 coord, Eye eye, bool isLeft) {
     vec2 ret = coord;
     ret = ret + applyEyeSpacing(ret, eye, isLeft);
     ret = ret + applyEyeSize(ret, eye);
     ret = ret + applyEyeHeight(ret, eye);
     ret = ret + applyFrontEyeSize(ret, eye, isLeft);
+    ret = ret + applyUnderEyeSize(ret, eye, isLeft);
 
     return ret;
   }
