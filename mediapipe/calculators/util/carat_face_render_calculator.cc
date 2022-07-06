@@ -865,6 +865,28 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return vec2(newRcoord.x - rcoord.x, 0.0);
   }
 
+  vec2 applyNoseEndSize(vec2 coord, Nose nose) {
+    float r1 = min(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right));
+    float r2 = dist(nose.lowestCenter, nose.center);
+    r1 = r1 / 1.5;
+
+    if (!isInEllipse(coord, nose.lowestCenter, r1, r2)) {
+      return vec2(0.0, 0.0);
+    }
+
+    vec2 rcoord = coord - nose.lowestCenter;
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = 1.0 / noseEndSize * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return newRcoord - rcoord;
+  }
 
   vec2 applyNoseTransforms(vec2 coord, Nose nose) {
     vec2 ret = coord;
@@ -872,6 +894,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     ret = ret + applyNoseWidth(ret, nose);
     ret = ret + applyNoseBridgeSize(ret, nose);
     ret = ret + applyNoseBaseSize(ret, nose);
+    ret = ret + applyNoseEndSize(ret, nose);
 
     return ret;
   }
