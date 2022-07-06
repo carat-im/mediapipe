@@ -490,6 +490,28 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].rightTip").c_str()),
       mouth_right_tip.x(),
       mouth_right_tip.y());
+
+    const NormalizedLandmark& forehead_center = landmarks.landmark(10);
+    const NormalizedLandmark& forehead_left = landmarks.landmark(54);
+    const NormalizedLandmark& forehead_right = landmarks.landmark(284);
+    const NormalizedLandmark& forehead_bottom = landmarks.landmark(9);
+
+    glUniform2f(
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].foreheadCenter").c_str()),
+      forehead_center.x(),
+      forehead_center.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].foreheadLeft").c_str()),
+      forehead_left.x(),
+      forehead_left.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].foreheadRight").c_str()),
+      forehead_right.x(),
+      forehead_right.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].foreheadBottom").c_str()),
+      forehead_bottom.x(),
+      forehead_bottom.y());
   }
 
   // vertex storage
@@ -586,11 +608,19 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     vec2 rightTip;
   };
 
+  struct Head {
+    vec2 foreheadCenter;
+    vec2 foreheadLeft;
+    vec2 foreheadRight;
+    vec2 foreheadBottom;
+  };
+
   // 우리는 우선 최대 4명만 인식한다고 가정함.
   uniform Eye leftEyes[4];
   uniform Eye rightEyes[4];
   uniform Nose noses[4];
   uniform Mouth mouthes[4];
+  uniform Head heads[4];
 
   uniform float foreheadSize;
   uniform float cheekboneSize;
@@ -839,7 +869,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
       return vec2(0.0, 0.0);
     }
 
-    float maxMoveDist = (noseHeight - 1.0) * r2;
+    float maxMoveDist = (1.0 - noseHeight) * r2;
 
     if (isInEllipse(coord, nose.lowestCenter, r1, r2)) {
       return vec2(0.0, maxMoveDist);
@@ -900,7 +930,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyNoseBaseSize(vec2 coord, Nose nose) {
-    float r1 = min(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right));
+    float r1 = min(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right)) * 1.5;
     float r2 = dist(nose.lowestCenter, nose.center);
 
     if (!isInEllipse(coord, nose.lowestCenter, r1, r2)) {
@@ -1045,6 +1075,39 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return ret;
   }
 
+  vec2 applyForeheadSize(vec2 coord, Head head) {
+    vec2 center = head.foreheadCenter;
+    float verticalDist = dist(center, head.foreheadBottom);
+    center.y = center.y - verticalDist;
+    float r1 = min(dist(head.foreheadCenter, head.foreheadLeft), dist(head.foreheadCenter, head.foreheadRight)) * 1.5;
+    float r2 = verticalDist * 2.0;
+
+    vec2 rcoord = coord - center;
+
+    if (!isInEllipse(coord, center, r1, r2) || rcoord.y < 0.0) {
+      return vec2(0.0, 0.0);
+    }
+
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = foreheadSize * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return vec2(0.0, newRcoord.y - rcoord.y);
+  }
+
+  vec2 applyHeadTransforms(vec2 coord, Head head) {
+    vec2 ret = coord;
+    ret = ret + applyForeheadSize(ret, head);
+
+    return ret;
+  }
+
   void main() {
     vec2 coord = sample_coordinate;
     for (int i = 0; i < faceCount; i++) {
@@ -1058,6 +1121,9 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
       Mouth mouth = mouthes[i];
       coord = applyMouthTransforms(coord, mouth);
+
+      Head head = heads[i];
+      coord = applyHeadTransforms(coord, head);
     }
 
     vec3 out_pix = texture2D(input_frame, coord).rgb;
