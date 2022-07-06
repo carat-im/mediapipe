@@ -418,6 +418,7 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     const NormalizedLandmark& nose_lowest_center = landmarks.landmark(4);
     const NormalizedLandmark& nose_left = landmarks.landmark(203);
     const NormalizedLandmark& nose_right = landmarks.landmark(423);
+
     glUniform2f(
       glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].highestCenter").c_str()),
       nose_highest_center.x(),
@@ -446,6 +447,49 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].right").c_str()),
       nose_right.x(),
       nose_right.y());
+
+    const NormalizedLandmark& top_lip_bottom = landmarks.landmark(13);
+    const NormalizedLandmark& bottom_lip_top = landmarks.landmark(14);
+    const NormalizedLandmark& philtrum = landmarks.landmark(164);
+    const NormalizedLandmark& mouth_left = landmarks.landmark(57);
+    const NormalizedLandmark& mouth_far_left = landmarks.landmark(207);
+    const NormalizedLandmark& mouth_right = landmarks.landmark(287);
+    const NormalizedLandmark& mouth_far_right = landmarks.landmark(427);
+    const NormalizedLandmark& mouth_left_tip = landmarks.landmark(186);
+    const NormalizedLandmark& mouth_right_tip = landmarks.landmark(410);
+
+    glUniform2f(
+      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].center").c_str()),
+      (top_lip_bottom.x() + bottom_lip_top.x()) / 2,
+      (top_lip_bottom.y() + bottom_lip_top.y()) / 2);
+    glUniform2f(
+      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].philtrum").c_str()),
+      philtrum.x(),
+      philtrum.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].left").c_str()),
+      mouth_left.x(),
+      mouth_left.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].farLeft").c_str()),
+      mouth_far_left.x(),
+      mouth_far_left.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].right").c_str()),
+      mouth_right.x(),
+      mouth_right.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].farRight").c_str()),
+      mouth_far_right.x(),
+      mouth_far_right.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].leftTip").c_str()),
+      mouth_left_tip.x(),
+      mouth_left_tip.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].rightTip").c_str()),
+      mouth_right_tip.x(),
+      mouth_right_tip.y());
   }
 
   // vertex storage
@@ -531,10 +575,22 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     vec2 right;
   };
 
+  struct Mouth {
+    vec2 center;
+    vec2 philtrum;
+    vec2 left;
+    vec2 farLeft;
+    vec2 right;
+    vec2 farRight;
+    vec2 leftTip;
+    vec2 rightTip;
+  };
+
   // 우리는 우선 최대 4명만 인식한다고 가정함.
   uniform Eye leftEyes[4];
   uniform Eye rightEyes[4];
   uniform Nose noses[4];
+  uniform Mouth mouthes[4];
 
   uniform float foreheadSize;
   uniform float cheekboneSize;
@@ -774,7 +830,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyNoseHeight(vec2 coord, Nose nose) {
-    float r1 = max(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right));
+    float r1 = min(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right));
     float r2 = dist(nose.lowestCenter, nose.highCenter);
     float biggerR1 = r1 * 1.8;
     float biggerR2 = dist(nose.lowestCenter, nose.highestCenter);
@@ -899,6 +955,40 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return ret;
   }
 
+  vec2 applyPhiltrumHeight(vec2 coord, Mouth mouth) {
+    float r1 = min(dist(mouth.center, mouth.left), dist(mouth.center, mouth.right));
+    float r2 = dist(mouth.center, mouth.philtrum) / 2.0;
+    float biggerR1 = min(dist(mouth.center, mouth.farLeft), dist(mouth.center, mouth.farRight));
+    float biggerR2 = dist(mouth.center, mouth.philtrum);
+
+    if (!isInEllipse(coord, mouth.center, biggerR1, biggerR2)) {
+      return vec2(0.0, 0.0);
+    }
+
+    float maxMoveDist = (1.0 - philtrumHeight) * r2;
+
+    if (isInEllipse(coord, mouth.center, r1, r2)) {
+      return vec2(0.0, maxMoveDist);
+    } else {
+      vec2 rcoord = coord - mouth.center;
+      float theta = atan(rcoord.y, rcoord.x);
+
+      float smallCircleDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+      float bigCircleDist = (biggerR1 * biggerR2) / sqrt(pow(biggerR1, 2.0) * pow(sin(theta), 2.0) + pow(biggerR2, 2.0) * pow(cos(theta), 2.0));
+      float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+
+      return vec2(0.0, (bigCircleDist - dist) / (bigCircleDist - smallCircleDist) * maxMoveDist);
+    }
+  }
+
+
+  vec2 applyMouthTransforms(vec2 coord, Mouth mouth) {
+    vec2 ret = coord;
+    ret = ret + applyPhiltrumHeight(ret, mouth);
+
+    return ret;
+  }
+
   void main() {
     vec2 coord = sample_coordinate;
     for (int i = 0; i < faceCount; i++) {
@@ -909,6 +999,9 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
       Nose nose = noses[i];
       coord = applyNoseTransforms(coord, nose);
+
+      Mouth mouth = mouthes[i];
+      coord = applyMouthTransforms(coord, mouth);
     }
 
     vec3 out_pix = texture2D(input_frame, coord).rgb;
