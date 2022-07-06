@@ -455,8 +455,8 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     const NormalizedLandmark& mouth_far_left = landmarks.landmark(207);
     const NormalizedLandmark& mouth_right = landmarks.landmark(287);
     const NormalizedLandmark& mouth_far_right = landmarks.landmark(427);
-    const NormalizedLandmark& mouth_left_tip = landmarks.landmark(186);
-    const NormalizedLandmark& mouth_right_tip = landmarks.landmark(410);
+    const NormalizedLandmark& mouth_left_tip = landmarks.landmark(92);
+    const NormalizedLandmark& mouth_right_tip = landmarks.landmark(322);
 
     glUniform2f(
       glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].center").c_str()),
@@ -1003,10 +1003,44 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return newRcoord - rcoord;
   }
 
+  vec2 applyMouthEndUp(vec2 coord, Mouth mouth) {
+    vec2 center = mouth.leftTip;
+    float r1 = dist(center, mouth.left);
+    float r2 = r1 * 1.5;
+
+    if (!isInEllipse(coord, center, r1, r2)) {
+      center = mouth.rightTip;
+      r1 = dist(center, mouth.right);
+      r2 = r1 * 1.5;
+    }
+
+    if (!isInEllipse(coord, center, r1, r2)) {
+      return vec2(0.0, 0.0);
+    }
+
+    vec2 rcoord = coord - center;
+    if (rcoord.y < 0.0) {
+      return vec2(0.0, 0.0);
+    }
+
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = lipEndUp * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return vec2(0.0, newRcoord.y - rcoord.y);
+  }
+
   vec2 applyMouthTransforms(vec2 coord, Mouth mouth) {
     vec2 ret = coord;
     ret = ret + applyPhiltrumHeight(ret, mouth);
     ret = ret + applyMouthSize(ret, mouth);
+    ret = ret + applyMouthEndUp(ret, mouth);
 
     return ret;
   }
