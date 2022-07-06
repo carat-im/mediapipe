@@ -981,10 +981,32 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     }
   }
 
+  vec2 applyMouthSize(vec2 coord, Mouth mouth) {
+    float r1 = min(dist(mouth.center, mouth.left), dist(mouth.center, mouth.right));
+    float r2 = dist(mouth.center, mouth.philtrum);
+
+    if (!isInEllipse(coord, mouth.center, r1, r2)) {
+      return vec2(0.0, 0.0);
+    }
+
+    vec2 rcoord = coord - mouth.center;
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = (1.0 / lipSize) * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return newRcoord - rcoord;
+  }
 
   vec2 applyMouthTransforms(vec2 coord, Mouth mouth) {
     vec2 ret = coord;
     ret = ret + applyPhiltrumHeight(ret, mouth);
+    ret = ret + applyMouthSize(ret, mouth);
 
     return ret;
   }
