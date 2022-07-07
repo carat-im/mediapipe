@@ -495,6 +495,10 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     const NormalizedLandmark& forehead_left = landmarks.landmark(54);
     const NormalizedLandmark& forehead_right = landmarks.landmark(284);
     const NormalizedLandmark& forehead_bottom = landmarks.landmark(9);
+    const NormalizedLandmark& temple_left_center = landmarks.landmark(124);
+    const NormalizedLandmark& cheekbone_left_center = landmarks.landmark(111);
+    const NormalizedLandmark& temple_right_center = landmarks.landmark(353);
+    const NormalizedLandmark& cheekbone_right_center = landmarks.landmark(340);
 
     glUniform2f(
       glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].foreheadCenter").c_str()),
@@ -512,6 +516,22 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].foreheadBottom").c_str()),
       forehead_bottom.x(),
       forehead_bottom.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].templeLeftCenter").c_str()),
+      temple_left_center.x(),
+      temple_left_center.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].cheekboneLeftCenter").c_str()),
+      cheekbone_left_center.x(),
+      cheekbone_left_center.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].templeRightCenter").c_str()),
+      temple_right_center.x(),
+      temple_right_center.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].cheekboneRightCenter").c_str()),
+      cheekbone_right_center.x(),
+      cheekbone_right_center.y());
   }
 
   // vertex storage
@@ -613,6 +633,10 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     vec2 foreheadLeft;
     vec2 foreheadRight;
     vec2 foreheadBottom;
+    vec2 templeLeftCenter;
+    vec2 cheekboneLeftCenter;
+    vec2 templeRightCenter;
+    vec2 cheekboneRightCenter;
   };
 
   // 우리는 우선 최대 4명만 인식한다고 가정함.
@@ -1101,9 +1125,49 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return vec2(0.0, newRcoord.y - rcoord.y);
   }
 
+  vec2 applyCheekboneSize(vec2 coord, Head head) {
+    bool isLeft = true;
+    vec2 center = head.cheekboneLeftCenter;
+    float verticalDist = dist(center, head.templeLeftCenter);
+    center.y = center.y + verticalDist / 2.0;
+    float r1 = verticalDist;
+    float r2 = verticalDist * 1.2;
+
+    if (!isInEllipse(coord, center, r1, r2)) {
+      isLeft = false;
+      center = head.cheekboneRightCenter;
+      verticalDist = dist(center, head.templeRightCenter);
+      center.y = center.y + verticalDist / 2.0;
+      r1 = verticalDist;
+      r2 = verticalDist * 1.2;
+    }
+
+    if (!isInEllipse(coord, center, r1, r2)) {
+      return vec2(0.0, 0.0);
+    }
+
+    vec2 rcoord = coord - center;
+    if ((isLeft && rcoord.x > 0.0) || (!isLeft && rcoord.x < 0.0)) {
+      return vec2(0.0, 0.0);
+    }
+
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = 1.0 / cheekboneSize * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return vec2(newRcoord.x - rcoord.x, 0.0);
+  }
+
   vec2 applyHeadTransforms(vec2 coord, Head head) {
     vec2 ret = coord;
     ret = ret + applyForeheadSize(ret, head);
+    ret = ret + applyCheekboneSize(ret, head);
 
     return ret;
   }
