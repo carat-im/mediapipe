@@ -500,7 +500,9 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     const NormalizedLandmark& temple_right_center = landmarks.landmark(353);
     const NormalizedLandmark& cheekbone_right_center = landmarks.landmark(340);
     const NormalizedLandmark& chin_top = landmarks.landmark(18);
-    const NormalizedLandmark& chin_bottom = landmarks.landmark(152);
+    const NormalizedLandmark& chin_bottom_center = landmarks.landmark(152);
+    const NormalizedLandmark& chin_bottom_left = landmarks.landmark(208);
+    const NormalizedLandmark& chin_bottom_right = landmarks.landmark(428);
     const NormalizedLandmark& chin_left = landmarks.landmark(172);
     const NormalizedLandmark& chin_right = landmarks.landmark(397);
 
@@ -541,9 +543,17 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       chin_top.x(),
       chin_top.y());
     glUniform2f(
-      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].chinBottom").c_str()),
-      chin_bottom.x(),
-      chin_bottom.y());
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].chinBottomCenter").c_str()),
+      chin_bottom_center.x(),
+      chin_bottom_center.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].chinBottomLeft").c_str()),
+      chin_bottom_left.x(),
+      chin_bottom_left.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].chinBottomRight").c_str()),
+      chin_bottom_right.x(),
+      chin_bottom_right.y());
     glUniform2f(
       glGetUniformLocation(program_, ("heads[" + std::to_string(i) + "].chinLeft").c_str()),
       chin_left.x(),
@@ -658,7 +668,9 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     vec2 templeRightCenter;
     vec2 cheekboneRightCenter;
     vec2 chinTop;
-    vec2 chinBottom;
+    vec2 chinBottomCenter;
+    vec2 chinBottomLeft;
+    vec2 chinBottomRight;
     vec2 chinLeft;
     vec2 chinRight;
   };
@@ -1231,7 +1243,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float horizontalDist = head.chinTop.x - center.x;
     center.x = center.x + horizontalDist / 2.0;
     float r1 = horizontalDist / 1.5;
-    float r2 = head.chinBottom.y - center.y;
+    float r2 = head.chinBottomCenter.y - center.y;
 
     if (!isInEllipse(coord, center, r1, r2)) {
       isLeft = false;
@@ -1239,7 +1251,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
       horizontalDist = center.x - head.chinTop.x;
       center.x = center.x - horizontalDist / 2.0;
       r1 = horizontalDist / 1.5;
-      r2 = head.chinBottom.y - center.y;
+      r2 = head.chinBottomCenter.y - center.y;
     }
 
     if (!isInEllipse(coord, center, r1, r2)) {
@@ -1267,7 +1279,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   vec2 applyChinHeight(vec2 coord, Head head) {
     vec2 center = head.chinTop;
     float r1 = min(dist(center, head.chinLeft), dist(center, head.chinRight)) * 1.2;
-    float r2 = dist(center, head.chinBottom) * 1.5;
+    float r2 = dist(center, head.chinBottomCenter) * 1.5;
 
     if (!isInEllipse(coord, center, r1, r2)) {
       return vec2(0.0, 0.0);
@@ -1291,6 +1303,41 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return vec2(0.0, newRcoord.y - rcoord.y);
   }
 
+  vec2 applyChinSharpness(vec2 coord, Head head) {
+    bool isLeft = true;
+    vec2 center = head.chinBottomLeft;
+    float r1 = (head.chinBottomCenter.x - center.x) * 1.2;
+    float r2 = (center.y - head.chinTop.y) * 2.0;
+
+    if (!isInEllipse(coord, center, r1, r2)) {
+      isLeft = false;
+      center = head.chinBottomRight;
+      r1 = (center.x - head.chinBottomCenter.x) * 1.2;
+      r2 = (center.y - head.chinTop.y) * 2.0;
+    }
+
+    if (!isInEllipse(coord, center, r1, r2)) {
+      return vec2(0.0, 0.0);
+    }
+
+    vec2 rcoord = coord - center;
+    if (rcoord.y < 0.0) {
+      return vec2(0.0, 0.0);
+    }
+
+    float theta = atan(rcoord.y, rcoord.x);
+
+    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
+    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
+    float appliedDist = chinSharpness * dist;
+
+    float factor = dist / totalDist;
+    float newDist = factor * dist + (1.0 - factor) * appliedDist;
+
+    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
+    return newRcoord - rcoord;
+  }
+
   vec2 applyHeadTransforms(vec2 coord, Head head) {
     vec2 ret = coord;
     ret = ret + applyForeheadSize(ret, head);
@@ -1298,6 +1345,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     ret = ret + applyTempleSize(ret, head);
     ret = ret + applyChinSize(ret, head);
     ret = ret + applyChinHeight(ret, head);
+    ret = ret + applyChinSharpness(ret, head);
 
     return ret;
   }
