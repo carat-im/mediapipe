@@ -1374,7 +1374,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
       float invThresholdSqx2 = .5 / (threshold * threshold);     // 1.0 / (sigma^2 * 2.0)
       float invThresholdSqrt2PI = INV_SQRT_OF_2PI / threshold;   // 1.0 / (sqrt(2*PI) * sigma^2)
 
-      vec4 centrPx = texture(tex,uv); 
+      vec4 centrPx = texture2D(tex,uv); 
 
       float zBuff = 0.0;
       vec4 aBuff = vec4(0.0);
@@ -1386,7 +1386,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
           for (d.y=-pt; d.y <= pt; d.y++) {
               float blurFactor = exp( -dot(d , d) * invSigmaQx2 ) * invSigmaQx2PI;
 
-              vec4 walkPx =  texture(tex,uv+d/size);
+              vec4 walkPx =  texture2D(tex,uv+d/size);
               vec4 dC = walkPx-centrPx;
               float deltaFactor = exp( -dot(dC, dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
 
@@ -1395,6 +1395,55 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
           }
       }
       return aBuff/zBuff;
+  }
+
+  float normpdf(float x, float sigma)
+  {
+      return 0.39894*exp(-0.5*x*x/(sigma*sigma))/sigma;
+  }
+
+  float normpdf3(vec3 v, float sigma)
+  {
+      return 0.39894*exp(-0.5*dot(v,v)/(sigma*sigma))/sigma;
+  }
+
+  vec3 bilateralFilter(sampler2D tex, vec2 uv) {
+    const float kSize = 7.0;
+    float kernel[15];
+    kernel[0] = 0.031225216;
+    kernel[1] = 0.033322271;
+    kernel[2] = 0.035206333;
+    kernel[3] = 0.036826804;
+    kernel[4] = 0.038138565;
+    kernel[5] = 0.039104044;
+    kernel[6] = 0.039695028;
+    kernel[7] = 0.039894000;
+    kernel[8] = 0.039695028;
+    kernel[9] = 0.039104044;
+    kernel[10] = 0.038138565;
+    kernel[11] = 0.036826804;
+    kernel[12] = 0.035206333;
+    kernel[13] = 0.033322271;
+    kernel[14] = 0.031225216;
+
+    vec3 c = texture2D(tex, uv).rgb; 
+    vec3 cc;
+    float factor;
+    float bZ = 1.0 / normpdf(0.0, skinSmooth);
+    vec2 size = vec2(width, height);
+    vec2 d;
+    vec3 final_colour = vec3(0.0);
+    float Z = 0.0;
+    for (d.x = -kSize; d.x <= kSize; d.x++) {
+      for (d.y = -kSize; d.y <= kSize; d.y++) {
+        cc = texture2D(tex, uv + d / size).rgb;
+        factor = normpdf3(cc - c, skinSmooth) * bZ * kernel[int(kSize + d.y)] * kernel[int(kSize + d.x)];
+        Z += factor;
+        final_colour = final_colour + factor * cc;
+      }
+    }
+
+    return final_colour / Z;
   }
 
   void main() {
@@ -1444,8 +1493,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
     bool isSkin = (h >= 0.0 && h <= 50.0 && s >= 0.23 && s <= 0.68 && r > 95.0 && g > 40.0 && b > 20.0 && r > g && r > b && abs(r - g) > 15.0) || (r > 95.0 && g > 40.0 && b > 20.0 && r > g && r > b && abs(r - g) > 15.0 && cr > 135.0 && cb > 85.0 && y > 80.0 && cr <= 1.5862 * cb + 20.0 && cr >= 0.3448 * cb + 76.2069 && cr >= -4.5652 * cb + 234.5652 && cr <= -1.15 * cb + 301.75 && cr <= -2.2857 * cb + 432.85);
     if (isSkin && skinSmooth > 0.0) {
-      float sigma = skinSmooth * 3.0;
-      fragColor.rgb = smartDeNoise(input_frame, coord, sigma, sigma * 1.5, 0.6).rgb;
+      fragColor.rgb = bilateralFilter(input_frame, coord);
     } else {
       fragColor.rgb = out_pix;
     }
