@@ -59,6 +59,7 @@ constexpr char kNoseEndSizeTag[] = "NOSE_END_SIZE";
 constexpr char kPhiltrumHeightTag[] = "PHILTRUM_HEIGHT";
 constexpr char kLipSizeTag[] = "LIP_SIZE";
 constexpr char kLipEndUpTag[] = "LIP_END_UP";
+constexpr char kSkinSmoothTag[] = "SKIN_SMOOTH";
 
 enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
 
@@ -179,6 +180,9 @@ absl::Status CaratFaceRenderCalculator::GetContract(CalculatorContract* cc) {
   if (cc->InputSidePackets().HasTag(kLipEndUpTag)) {
     cc->InputSidePackets().Tag(kLipEndUpTag).Set<std::unique_ptr<float>>();
   }
+  if (cc->InputSidePackets().HasTag(kSkinSmoothTag)) {
+    cc->InputSidePackets().Tag(kSkinSmoothTag).Set<std::unique_ptr<float>>();
+  }
 
   return absl::OkStatus();
 }
@@ -293,6 +297,8 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
           : cc->Inputs().Tag(kMultiFaceLandmarksTag).Get<std::vector<NormalizedLandmarkList>>();
 
   glUniform1i(glGetUniformLocation(program_, "faceCount"), multi_face_landmarks.size());
+  glUniform1f(glGetUniformLocation(program_, "width"), width_);
+  glUniform1f(glGetUniformLocation(program_, "height"), height_);
 
   glUniform1f(glGetUniformLocation(program_, "foreheadSize"), *cc->InputSidePackets().Tag(kForeheadSizeTag).Get<std::unique_ptr<float>>());
   glUniform1f(glGetUniformLocation(program_, "cheekboneSize"), *cc->InputSidePackets().Tag(kCheekboneSizeTag).Get<std::unique_ptr<float>>());
@@ -314,6 +320,8 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
   glUniform1f(glGetUniformLocation(program_, "philtrumHeight"), *cc->InputSidePackets().Tag(kPhiltrumHeightTag).Get<std::unique_ptr<float>>());
   glUniform1f(glGetUniformLocation(program_, "lipSize"), *cc->InputSidePackets().Tag(kLipSizeTag).Get<std::unique_ptr<float>>());
   glUniform1f(glGetUniformLocation(program_, "lipEndUp"), *cc->InputSidePackets().Tag(kLipEndUpTag).Get<std::unique_ptr<float>>());
+  float skinSmooth = *cc->InputSidePackets().Tag(kSkinSmoothTag).Get<std::unique_ptr<float>>();
+  glUniform1f(glGetUniformLocation(program_, "skinSmooth"), skinSmooth);
 
 
   for (int i = 0; i < multi_face_landmarks.size(); ++i) {
@@ -619,11 +627,15 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   #endif  // GL_ES
 
   #define PI 3.1415926535897932384626433832795
+  #define INV_SQRT_OF_2PI 0.39894228040143267793994605993439  // 1.0/SQRT_OF_2PI
+  #define INV_PI 0.31830988618379067153776752674503
 
   in vec2 sample_coordinate;
   uniform sampler2D input_frame;
 
   uniform int faceCount;
+  uniform float width;
+  uniform float height;
 
   struct Eye {
     vec2 center;
@@ -702,6 +714,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   uniform float philtrumHeight;
   uniform float lipSize;
   uniform float lipEndUp;
+  uniform float skinSmooth;
 
   bool isInEllipse(vec2 coord, vec2 center, float r1, float r2) {
     return pow(coord.x - center.x, 2.0) / pow(r1, 2.0) +
@@ -1350,6 +1363,40 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return ret;
   }
 
+  vec4 smartDeNoise(sampler2D tex, vec2 uv, float sigma, float kSigma, float threshold)
+  {
+      float radius = floor(kSigma*sigma + 0.5);
+      float radQ = radius * radius;
+
+      float invSigmaQx2 = .5 / (sigma * sigma);      // 1.0 / (sigma^2 * 2.0)
+      float invSigmaQx2PI = INV_PI * invSigmaQx2;    // 1/(2 * PI * sigma^2)
+
+      float invThresholdSqx2 = .5 / (threshold * threshold);     // 1.0 / (sigma^2 * 2.0)
+      float invThresholdSqrt2PI = INV_SQRT_OF_2PI / threshold;   // 1.0 / (sqrt(2*PI) * sigma^2)
+
+      vec4 centrPx = texture(tex,uv); 
+
+      float zBuff = 0.0;
+      vec4 aBuff = vec4(0.0);
+      vec2 size = vec2(width, height);
+
+      vec2 d;
+      for (d.x=-radius; d.x <= radius; d.x++) {
+          float pt = sqrt(radQ-d.x*d.x);       // pt = yRadius: have circular trend
+          for (d.y=-pt; d.y <= pt; d.y++) {
+              float blurFactor = exp( -dot(d , d) * invSigmaQx2 ) * invSigmaQx2PI;
+
+              vec4 walkPx =  texture(tex,uv+d/size);
+              vec4 dC = walkPx-centrPx;
+              float deltaFactor = exp( -dot(dC, dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
+
+              zBuff += deltaFactor;
+              aBuff += deltaFactor*walkPx;
+          }
+      }
+      return aBuff/zBuff;
+  }
+
   void main() {
     vec2 coord = sample_coordinate;
     for (int i = 0; i < faceCount; i++) {
@@ -1369,7 +1416,40 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     }
 
     vec3 out_pix = texture2D(input_frame, coord).rgb;
-    fragColor.rgb = out_pix;
+
+    float r = out_pix.r * 255.0;
+    float g = out_pix.g * 255.0;
+    float b = out_pix.b * 255.0;
+    float minRgb = min(min(r, g), b);
+    float maxRgb = max(max(r, g), b);
+    float y = 0.299 * r + 0.587 * g + 0.114 * b;
+    float cr = (r - y) * 0.713 + 0.5;
+    float cb = (b - y) * 0.564 + 0.5;
+    float v = maxRgb;
+    float s = 0.0;
+    if (v != 0.0) {
+      s = (v - minRgb) / v;
+    }
+    float h = 0.0;
+    if (v == r) {
+      h = (60.0 * (g - b)) / (v - minRgb);
+    } else if (v == g) {
+      h = 120.0 + (60.0 * (b - r)) / (v - minRgb);
+    } else if (v == b) {
+      h = 240.0 + (60.0 * (r - g)) / (v - minRgb);
+    }
+    if (h < 0.0) {
+      h = h + 360.0;
+    }
+
+    bool isSkin = (h >= 0.0 && h <= 50.0 && s >= 0.23 && s <= 0.68 && r > 95.0 && g > 40.0 && b > 20.0 && r > g && r > b && abs(r - g) > 15.0) || (r > 95.0 && g > 40.0 && b > 20.0 && r > g && r > b && abs(r - g) > 15.0 && cr > 135.0 && cb > 85.0 && y > 80.0 && cr <= 1.5862 * cb + 20.0 && cr >= 0.3448 * cb + 76.2069 && cr >= -4.5652 * cb + 234.5652 && cr <= -1.15 * cb + 301.75 && cr <= -2.2857 * cb + 432.85);
+    if (isSkin && skinSmooth > 0.0) {
+      float sigma = skinSmooth * 3.0;
+      fragColor.rgb = smartDeNoise(input_frame, coord, sigma, sigma * 1.5, 0.6).rgb;
+    } else {
+      fragColor.rgb = out_pix;
+    }
+
     fragColor.a = 1.0;
   }
   )";

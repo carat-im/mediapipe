@@ -30,6 +30,7 @@
                                 noseEndSize:(float)noseEndSize
                                 philtrumHeight:(float)philtrumHeight
                                 lipSize:(float)lipSize
-                                lipEndUp:(float)lipEndUp;
+                                lipEndUp:(float)lipEndUp
+                                skinSmooth:(float)skinSmooth;
 @property(weak, nonatomic) id <CaratMediapipeGraphDelegate> delegate;
 @end

@@ -28,6 +28,7 @@ input_side_packet: "NOSE_END_SIZE:nose_end_size"
 input_side_packet: "PHILTRUM_HEIGHT:philtrum_height"
 input_side_packet: "LIP_SIZE:lip_size"
 input_side_packet: "LIP_END_UP:lip_end_up"
+input_side_packet: "SKIN_SMOOTH:skin_smooth"
 
 # GPU image with rendered data. (GpuBuffer)
 output_stream: "IMAGE:output_image"
@@ -56,5 +57,6 @@ node {
   input_side_packet: "PHILTRUM_HEIGHT:philtrum_height"
   input_side_packet: "LIP_SIZE:lip_size"
   input_side_packet: "LIP_END_UP:lip_end_up"
+  input_side_packet: "SKIN_SMOOTH:skin_smooth"
   output_stream: "IMAGE_GPU:output_image"
 }

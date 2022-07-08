@@ -31,6 +31,7 @@ static const char* kNoseEndSizeInputSidePacket = "nose_end_size";
 static const char* kPhiltrumHeightInputSidePacket = "philtrum_height";
 static const char* kLipSizeInputSidePacket = "lip_size";
 static const char* kLipEndUpInputSidePacket = "lip_end_up";
+static const char* kSkinSmoothInputSidePacket = "skin_smooth";
 
 @interface CaratMediapipeGraph() <MPPGraphDelegate>
 @property(nonatomic) MPPGraph* mediapipeGraph;
@@ -57,6 +58,7 @@ static const char* kLipEndUpInputSidePacket = "lip_end_up";
     mediapipe::Packet _philtrumHeightPacket;
     mediapipe::Packet _lipSizePacket;
     mediapipe::Packet _lipEndUpPacket;
+    mediapipe::Packet _skinSmoothPacket;
 }
 
 #pragma mark - Cleanup methods
@@ -179,6 +181,10 @@ static const char* kLipEndUpInputSidePacket = "lip_end_up";
         packet = mediapipe::AdoptAsUniquePtr<float>(new float(1.f));
         [self.mediapipeGraph setSidePacket:packet named:kLipEndUpInputSidePacket];
         _lipEndUpPacket = packet;
+
+        packet = mediapipe::AdoptAsUniquePtr<float>(new float(0.f));
+        [self.mediapipeGraph setSidePacket:packet named:kSkinSmoothInputSidePacket];
+        _skinSmoothPacket = packet;
     }
     return self;
 }
@@ -211,7 +217,8 @@ static const char* kLipEndUpInputSidePacket = "lip_end_up";
                                  noseEndSize:(float)noseEndSize
                                  philtrumHeight:(float)philtrumHeight
                                  lipSize:(float)lipSize
-                                 lipEndUp:(float)lipEndUp {
+                                 lipEndUp:(float)lipEndUp
+                                 skinSmooth:(float)skinSmooth {
     float *f = mediapipe::GetFromUniquePtr<float>(_foreheadSizePacket);
     *f = foreheadSize;
 
@@ -271,6 +278,9 @@ static const char* kLipEndUpInputSidePacket = "lip_end_up";
 
     f = mediapipe::GetFromUniquePtr<float>(_lipEndUpPacket);
     *f = lipEndUp;
+
+    f = mediapipe::GetFromUniquePtr<float>(_skinSmoothPacket);
+    *f = skinSmooth;
 }
 
 - (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer {
