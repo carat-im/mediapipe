@@ -297,6 +297,7 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
           : cc->Inputs().Tag(kMultiFaceLandmarksTag).Get<std::vector<NormalizedLandmarkList>>();
 
   glUniform1i(glGetUniformLocation(program_, "faceCount"), multi_face_landmarks.size());
+  LOG(WARNING) << "width: " << std::to_string(width_) << " height: " << std::to_string(height_);
   glUniform1f(glGetUniformLocation(program_, "width"), width_);
   glUniform1f(glGetUniformLocation(program_, "height"), height_);
 

@@ -29,19 +29,19 @@ bazel build -c opt --strip=ALWAYS \
     --copt=-DABSL_MIN_LOG_LEVEL=2 \
     --linkopt=-Wl,--gc-sections,--strip-all \
     //mediapipe/carat/android/src/java/com/carat/camera/caratmediapipegraph/apps/carat:carat_mediapipe.aar
-bazel build -c opt mediapipe/graphs/face_mesh:face_mesh_mobile_gpu_binary_graph
+bazel build -c opt mediapipe/graphs/face_mesh:carat_face_mesh_mobile_gpu_binary_graph
 
 mkdir -p ../android/app/libs
 mkdir -p ../android/app/src/main/assets
 cp -rf bazel-bin/mediapipe/carat/android/src/java/com/carat/camera/caratmediapipegraph/apps/carat/carat_mediapipe.aar ../android/app/libs
-cp -rf bazel-bin/mediapipe/graphs/face_mesh/face_mesh_mobile_gpu.binarypb ../android/app/src/main/assets
+cp -rf bazel-bin/mediapipe/graphs/face_mesh/carat_face_mesh_mobile_gpu.binarypb ../android/app/src/main/assets
 cp -rf mediapipe/modules/face_landmark/face_landmark_with_attention.tflite ../android/app/src/main/assets
 cp -rf mediapipe/modules/face_detection/face_detection_short_range.tflite ../android/app/src/main/assets
 
 mkdir -p ../plugins/packages/camera/camera/android/libs
 mkdir -p ../plugins/packages/camera/camera/android/src/main/assets
 cp -rf bazel-bin/mediapipe/carat/android/src/java/com/carat/camera/caratmediapipegraph/apps/carat/carat_mediapipe.aar ../plugins/packages/camera/camera/android/libs
-cp -rf bazel-bin/mediapipe/graphs/face_mesh/face_mesh_mobile_gpu.binarypb ../plugins/packages/camera/camera/android/src/main/assets
+cp -rf bazel-bin/mediapipe/graphs/face_mesh/carat_face_mesh_mobile_gpu.binarypb ../plugins/packages/camera/camera/android/src/main/assets
 cp -rf mediapipe/modules/face_landmark/face_landmark_with_attention.tflite ../plugins/packages/camera/camera/android/src/main/assets
 cp -rf mediapipe/modules/face_detection/face_detection_short_range.tflite ../plugins/packages/camera/camera/android/src/main/assets
 
