@@ -121,67 +121,151 @@ absl::Status CaratFaceRenderCalculator::GetContract(CalculatorContract* cc) {
   }
 
   if (cc->InputSidePackets().HasTag(kForeheadSizeTag)) {
-    cc->InputSidePackets().Tag(kForeheadSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kForeheadSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kForeheadSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kCheekboneSizeTag)) {
-    cc->InputSidePackets().Tag(kCheekboneSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kCheekboneSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kCheekboneSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kTempleSizeTag)) {
-    cc->InputSidePackets().Tag(kTempleSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kTempleSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kTempleSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kChinSizeTag)) {
-    cc->InputSidePackets().Tag(kChinSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kChinSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kChinSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kChinHeightTag)) {
-    cc->InputSidePackets().Tag(kChinHeightTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kChinHeightTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kChinHeightTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kChinSharpnessTag)) {
-    cc->InputSidePackets().Tag(kChinSharpnessTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kChinSharpnessTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kChinSharpnessTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kEyeSizeTag)) {
-    cc->InputSidePackets().Tag(kEyeSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kEyeSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kEyeSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kEyeHeightTag)) {
-    cc->InputSidePackets().Tag(kEyeHeightTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kEyeHeightTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kEyeHeightTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kEyeSpacingTag)) {
-    cc->InputSidePackets().Tag(kEyeSpacingTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kEyeSpacingTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kEyeSpacingTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kFrontEyeSizeTag)) {
-    cc->InputSidePackets().Tag(kFrontEyeSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kFrontEyeSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kFrontEyeSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kUnderEyeSizeTag)) {
-    cc->InputSidePackets().Tag(kUnderEyeSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kUnderEyeSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kUnderEyeSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kPupilSizeTag)) {
-    cc->InputSidePackets().Tag(kPupilSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kPupilSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kPupilSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kNoseHeightTag)) {
-    cc->InputSidePackets().Tag(kNoseHeightTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kNoseHeightTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kNoseHeightTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kNoseWidthTag)) {
-    cc->InputSidePackets().Tag(kNoseWidthTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kNoseWidthTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kNoseWidthTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kNoseBridgeSizeTag)) {
-    cc->InputSidePackets().Tag(kNoseBridgeSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kNoseBridgeSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kNoseBridgeSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kNoseBaseSizeTag)) {
-    cc->InputSidePackets().Tag(kNoseBaseSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kNoseBaseSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kNoseBaseSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kNoseEndSizeTag)) {
-    cc->InputSidePackets().Tag(kNoseEndSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kNoseEndSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kNoseEndSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kPhiltrumHeightTag)) {
-    cc->InputSidePackets().Tag(kPhiltrumHeightTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kPhiltrumHeightTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kPhiltrumHeightTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kLipSizeTag)) {
-    cc->InputSidePackets().Tag(kLipSizeTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kLipSizeTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kLipSizeTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kLipEndUpTag)) {
-    cc->InputSidePackets().Tag(kLipEndUpTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kLipEndUpTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kLipEndUpTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
   if (cc->InputSidePackets().HasTag(kSkinSmoothTag)) {
-    cc->InputSidePackets().Tag(kSkinSmoothTag).Set<std::unique_ptr<float>>();
+    #if defined(__APPLE__)
+      cc->InputSidePackets().Tag(kSkinSmoothTag).Set<std::unique_ptr<float>>();
+    #else
+      cc->InputSidePackets().Tag(kSkinSmoothTag).Set<std::unique_ptr<SyncedPacket>>();
+    #endif
   }
 
   return absl::OkStatus();
@@ -301,28 +385,51 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
   glUniform1f(glGetUniformLocation(program_, "width"), width_);
   glUniform1f(glGetUniformLocation(program_, "height"), height_);
 
-  glUniform1f(glGetUniformLocation(program_, "foreheadSize"), *cc->InputSidePackets().Tag(kForeheadSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "cheekboneSize"), *cc->InputSidePackets().Tag(kCheekboneSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "templeSize"), *cc->InputSidePackets().Tag(kTempleSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "chinSize"), *cc->InputSidePackets().Tag(kChinSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "chinHeight"), *cc->InputSidePackets().Tag(kChinHeightTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "chinSharpness"), *cc->InputSidePackets().Tag(kChinSharpnessTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "eyeSize"), *cc->InputSidePackets().Tag(kEyeSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "eyeHeight"), *cc->InputSidePackets().Tag(kEyeHeightTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "eyeSpacing"), *cc->InputSidePackets().Tag(kEyeSpacingTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "frontEyeSize"), *cc->InputSidePackets().Tag(kFrontEyeSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "underEyeSize"), *cc->InputSidePackets().Tag(kUnderEyeSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "pupilSize"), *cc->InputSidePackets().Tag(kPupilSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "noseHeight"), *cc->InputSidePackets().Tag(kNoseHeightTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "noseWidth"), *cc->InputSidePackets().Tag(kNoseWidthTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "noseBridgeSize"), *cc->InputSidePackets().Tag(kNoseBridgeSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "noseBaseSize"), *cc->InputSidePackets().Tag(kNoseBaseSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "noseEndSize"), *cc->InputSidePackets().Tag(kNoseEndSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "philtrumHeight"), *cc->InputSidePackets().Tag(kPhiltrumHeightTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "lipSize"), *cc->InputSidePackets().Tag(kLipSizeTag).Get<std::unique_ptr<float>>());
-  glUniform1f(glGetUniformLocation(program_, "lipEndUp"), *cc->InputSidePackets().Tag(kLipEndUpTag).Get<std::unique_ptr<float>>());
-  float skinSmooth = *cc->InputSidePackets().Tag(kSkinSmoothTag).Get<std::unique_ptr<float>>();
-  glUniform1f(glGetUniformLocation(program_, "skinSmooth"), skinSmooth);
+  #if defined(__APPLE__)
+    glUniform1f(glGetUniformLocation(program_, "foreheadSize"), *cc->InputSidePackets().Tag(kForeheadSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "cheekboneSize"), *cc->InputSidePackets().Tag(kCheekboneSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "templeSize"), *cc->InputSidePackets().Tag(kTempleSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "chinSize"), *cc->InputSidePackets().Tag(kChinSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "chinHeight"), *cc->InputSidePackets().Tag(kChinHeightTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "chinSharpness"), *cc->InputSidePackets().Tag(kChinSharpnessTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "eyeSize"), *cc->InputSidePackets().Tag(kEyeSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "eyeHeight"), *cc->InputSidePackets().Tag(kEyeHeightTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "eyeSpacing"), *cc->InputSidePackets().Tag(kEyeSpacingTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "frontEyeSize"), *cc->InputSidePackets().Tag(kFrontEyeSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "underEyeSize"), *cc->InputSidePackets().Tag(kUnderEyeSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "pupilSize"), *cc->InputSidePackets().Tag(kPupilSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "noseHeight"), *cc->InputSidePackets().Tag(kNoseHeightTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "noseWidth"), *cc->InputSidePackets().Tag(kNoseWidthTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "noseBridgeSize"), *cc->InputSidePackets().Tag(kNoseBridgeSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "noseBaseSize"), *cc->InputSidePackets().Tag(kNoseBaseSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "noseEndSize"), *cc->InputSidePackets().Tag(kNoseEndSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "philtrumHeight"), *cc->InputSidePackets().Tag(kPhiltrumHeightTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "lipSize"), *cc->InputSidePackets().Tag(kLipSizeTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "lipEndUp"), *cc->InputSidePackets().Tag(kLipEndUpTag).Get<std::unique_ptr<float>>());
+    glUniform1f(glGetUniformLocation(program_, "skinSmooth"), *cc->InputSidePackets().Tag(kSkinSmoothTag).Get<std::unique_ptr<float>>());
+  #else
+    glUniform1f(glGetUniformLocation(program_, "foreheadSize"), (cc->InputSidePackets().Tag(kForeheadSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "cheekboneSize"), (cc->InputSidePackets().Tag(kCheekboneSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "templeSize"), (cc->InputSidePackets().Tag(kTempleSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "chinSize"), (cc->InputSidePackets().Tag(kChinSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "chinHeight"), (cc->InputSidePackets().Tag(kChinHeightTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "chinSharpness"), (cc->InputSidePackets().Tag(kChinSharpnessTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "eyeSize"), (cc->InputSidePackets().Tag(kEyeSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "eyeHeight"), (cc->InputSidePackets().Tag(kEyeHeightTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "eyeSpacing"), (cc->InputSidePackets().Tag(kEyeSpacingTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "frontEyeSize"), (cc->InputSidePackets().Tag(kFrontEyeSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "underEyeSize"), (cc->InputSidePackets().Tag(kUnderEyeSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "pupilSize"), (cc->InputSidePackets().Tag(kPupilSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "noseHeight"), (cc->InputSidePackets().Tag(kNoseHeightTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "noseWidth"), (cc->InputSidePackets().Tag(kNoseWidthTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "noseBridgeSize"), (cc->InputSidePackets().Tag(kNoseBridgeSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "noseBaseSize"), (cc->InputSidePackets().Tag(kNoseBaseSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "noseEndSize"), (cc->InputSidePackets().Tag(kNoseEndSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "philtrumHeight"), (cc->InputSidePackets().Tag(kPhiltrumHeightTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "lipSize"), (cc->InputSidePackets().Tag(kLipSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "lipEndUp"), (cc->InputSidePackets().Tag(kLipEndUpTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+    glUniform1f(glGetUniformLocation(program_, "skinSmooth"), (cc->InputSidePackets().Tag(kSkinSmoothTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
+  #endif
 
 
   for (int i = 0; i < multi_face_landmarks.size(); ++i) {
