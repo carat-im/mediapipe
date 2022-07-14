@@ -889,15 +889,15 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return dist(center, edgePoint);
   }
 
-  vec2 applyEyeSize(vec2 coord, Eye eye) {
+  vec2 applyEyeSize(vec2 coord, Eye eye, float faceTheta) {
     float r1 = dist(eye.center, eye.front) * eyeSize;
     float r2 = dist(eye.center, eye.top) * eyeSize;
 
-    if (!isInEllipse(coord, eye.center, r1, r2)) {
+    if (!isInRotatedEllipse(coord, eye.center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - eye.center;
+    vec2 rcoord = rotated(coord - eye.center, -faceTheta);
     float theta = atan(rcoord.y, rcoord.x);
 
     float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
@@ -908,51 +908,44 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return newRcoord - rcoord;
+    return rotated(newRcoord - rcoord, faceTheta);
   }
 
-  vec2 applyEyeSpacing(vec2 coord, Eye eye, bool isLeft) {
-    float biggerR1 = dist(eye.center, eye.farFront);
-    float biggerR2 = dist(eye.center, eye.farTop);
+  vec2 applyEyeSpacing(vec2 coord, Eye eye, bool isLeft, float faceTheta) {
+    float r1 = dist(eye.center, eye.front);
+    float r2 = dist(eye.center, eye.top);
+    float biggerR1 = r1 * 1.4;
+    float biggerR2 = r2 * 1.4;
 
-    if (!isInEllipse(coord, eye.center, biggerR1, biggerR2)) {
+    if (!isInRotatedEllipse(coord, eye.center, biggerR1, biggerR2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    float r1 = dist(eye.center, eye.front);
-    float r2 = dist(eye.center, eye.top);
-
     float maxMoveDist = (eyeSpacing - 1.0) * r1;
-    if (!isLeft) {
-      maxMoveDist = maxMoveDist * -1.0;
-    }
 
-    if (isInEllipse(coord, eye.center, r1, r2)) {
-      return vec2(maxMoveDist, 0.0);
+    if (isInRotatedEllipse(coord, eye.center, r1, r2, faceTheta)) {
+      return rotated(vec2(maxMoveDist, 0.0), faceTheta);
     } else {
-      vec2 rcoord = coord - eye.center;
+      vec2 rcoord = rotated(coord - eye.center, -faceTheta);
       float theta = atan(rcoord.y, rcoord.x);
 
       float smallCircleDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
       float bigCircleDist = (biggerR1 * biggerR2) / sqrt(pow(biggerR1, 2.0) * pow(sin(theta), 2.0) + pow(biggerR2, 2.0) * pow(cos(theta), 2.0));
       float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
 
-      return vec2((bigCircleDist - dist) / (bigCircleDist - smallCircleDist) * maxMoveDist, 0.0);
+      return rotated(vec2((bigCircleDist - dist) / (bigCircleDist - smallCircleDist) * maxMoveDist, 0.0), faceTheta);
     }
   }
 
-  vec2 applyEyeHeight(vec2 coord, Eye eye) {
+  vec2 applyEyeHeight(vec2 coord, Eye eye, float faceTheta) {
     float r1 = dist(eye.center, eye.front) * eyeHeight;
     float r2 = dist(eye.center, eye.top) * eyeHeight;
-    vec2 frontEyeRcoord = eye.front - eye.center;
-    float frontEyeTheta = atan(frontEyeRcoord.y, frontEyeRcoord.x);
 
-    if (!isInRotatedEllipse(coord, eye.center, r1, r2, frontEyeTheta)) {
+    if (!isInRotatedEllipse(coord, eye.center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = rotated(coord - eye.center, -frontEyeTheta);
-
+    vec2 rcoord = rotated(coord - eye.center, -faceTheta);
     float theta = atan(rcoord.y, rcoord.x);
 
     float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
@@ -963,17 +956,17 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return rotated(vec2(0.0, newRcoord.y - rcoord.y), frontEyeTheta);
+    return rotated(vec2(0.0, newRcoord.y - rcoord.y), faceTheta);
   }
 
-  vec2 applyFrontEyeSize(vec2 coord, Eye eye, bool isLeft) {
+  vec2 applyFrontEyeSize(vec2 coord, Eye eye, bool isLeft, float faceTheta) {
     vec2 center = eye.farFront;
-    float r1 = dist(eye.center, center) / 2.0;
-    float r2 = dist(center, eye.top) / 2.0;
+    float r1 = dist(eye.center, center) / 2.0 * frontEyeSize;
+    float r2 = dist(center, eye.top) / 2.0 * frontEyeSize;
 
-    vec2 rcoord = coord - center;
+    vec2 rcoord = rotated(coord - center, -faceTheta);
 
-    if (!isInEllipse(coord, center, r1, r2) || (isLeft && rcoord.x > 0.0) || (!isLeft && rcoord.x < 0.0)) {
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta) || rcoord.x > 0.0) {
       return vec2(0.0, 0.0);
     }
 
@@ -987,17 +980,17 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(newRcoord.x - rcoord.x, 0.0);
+    return rotated(vec2(newRcoord.x - rcoord.x, 0.0), faceTheta);
   }
 
-  vec2 applyUnderEyeSize(vec2 coord, Eye eye) {
-    vec2 center = (eye.center + eye.back) / 2.0;
-    float r1 = dist(center, eye.center);
-    float r2 = dist(center, eye.top);
+  vec2 applyUnderEyeSize(vec2 coord, Eye eye, bool isLeft, float faceTheta) {
+    vec2 center = eye.back * 0.7 + eye.center * 0.3;
+    float r1 = dist(center, eye.center) * underEyeSize;
+    float r2 = dist(center, eye.top) * underEyeSize;
 
-    vec2 rcoord = coord - center;
+    vec2 rcoord = rotated(coord - center, -faceTheta);
 
-    if (!isInEllipse(coord, center, r1, r2) || rcoord.y < 0.0) {
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta) || (isLeft && rcoord.y < 0.0) || (!isLeft && rcoord.y > 0.0)) {
       return vec2(0.0, 0.0);
     }
 
@@ -1011,21 +1004,18 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(0.0, newRcoord.y - rcoord.y);
+    return rotated(vec2(0.0, newRcoord.y - rcoord.y), faceTheta);
   }
 
-  vec2 applyPupilSize(vec2 coord, Eye eye) {
-    float r1 = dist(eye.irisCenter, eye.irisRight);
-    float r2 = dist(eye.irisCenter, eye.irisTop);
-    float adder = r1 * 0.2;
-    r1 = r1 + adder;
-    r2 = r2 + adder;
+  vec2 applyPupilSize(vec2 coord, Eye eye, float faceTheta) {
+    float r1 = dist(eye.irisCenter, eye.irisRight) * pupilSize;
+    float r2 = dist(eye.irisCenter, eye.irisTop) * pupilSize;
 
-    if (!isInEllipse(coord, eye.irisCenter, r1, r2)) {
+    if (!isInRotatedEllipse(coord, eye.irisCenter, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - eye.irisCenter;
+    vec2 rcoord = rotated(coord - eye.irisCenter, -faceTheta);
     float theta = atan(rcoord.y, rcoord.x);
 
     float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
@@ -1036,17 +1026,20 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return newRcoord - rcoord;
+    return rotated(newRcoord - rcoord, faceTheta);
   }
 
   vec2 applyEyeTransforms(vec2 coord, Eye eye, bool isLeft) {
+    vec2 frontRcoord = eye.front - eye.center;
+    float theta = atan(frontRcoord.y, frontRcoord.x);
+
     vec2 ret = coord;
-    ret = ret + applyEyeSpacing(ret, eye, isLeft);
-    ret = ret + applyEyeSize(ret, eye);
-    ret = ret + applyEyeHeight(ret, eye);
-    ret = ret + applyFrontEyeSize(ret, eye, isLeft);
-    ret = ret + applyUnderEyeSize(ret, eye);
-    ret = ret + applyPupilSize(ret, eye);
+    ret = ret + applyEyeSpacing(ret, eye, isLeft, theta);
+    ret = ret + applyEyeSize(ret, eye, theta);
+    ret = ret + applyEyeHeight(ret, eye, theta);
+    ret = ret + applyFrontEyeSize(ret, eye, isLeft, theta);
+    ret = ret + applyUnderEyeSize(ret, eye, isLeft, theta);
+    ret = ret + applyPupilSize(ret, eye, theta);
 
     return ret;
   }
