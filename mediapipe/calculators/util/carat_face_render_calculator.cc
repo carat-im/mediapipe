@@ -828,12 +828,21 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
         pow(coord.y - center.y, 2.0) / pow(r2, 2.0) <= 1.0;
   }
 
+  bool isInRotatedEllipse(vec2 coord, vec2 center, float r1, float r2, float radians) {
+    return pow(cos(radians) * (coord.x - center.x) + sin(radians) * (coord.y - center.y), 2.0) / pow(r1, 2.0) +
+        pow(sin(radians) * (coord.x - center.x) - cos(radians) * (coord.y - center.y), 2.0) / pow(r2, 2.0) <= 1.0;
+  }
+
   bool isInCircle(vec2 coord, vec2 center, float r) {
     return pow(coord.x - center.x, 2.0) + pow(coord.y - center.y, 2.0) < pow(r, 2.0);
   }
 
   float dist(vec2 v1, vec2 v2) {
     return sqrt(pow(v2.x - v1.x, 2.0) + pow(v2.y - v1.y, 2.0));
+  }
+
+  vec2 rotated(vec2 v, float theta) {
+    return vec2(v.x * cos(theta) - v.y * sin(theta), v.x * sin(theta) + v.y * cos(theta));
   }
 
   float rectIntersectionDist(vec2 center, float r1, float r2, float theta) {
@@ -881,8 +890,8 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyEyeSize(vec2 coord, Eye eye) {
-    float r1 = dist(eye.center, eye.front);
-    float r2 = dist(eye.center, eye.top);
+    float r1 = dist(eye.center, eye.front) * eyeSize;
+    float r2 = dist(eye.center, eye.top) * eyeSize;
 
     if (!isInEllipse(coord, eye.center, r1, r2)) {
       return vec2(0.0, 0.0);
@@ -933,14 +942,17 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyEyeHeight(vec2 coord, Eye eye) {
-    float r1 = dist(eye.center, eye.front);
-    float r2 = dist(eye.center, eye.top);
+    float r1 = dist(eye.center, eye.front) * eyeHeight;
+    float r2 = dist(eye.center, eye.top) * eyeHeight;
+    vec2 frontEyeRcoord = eye.front - eye.center;
+    float frontEyeTheta = atan(frontEyeRcoord.y, frontEyeRcoord.x);
 
-    if (!isInEllipse(coord, eye.center, r1, r2)) {
+    if (!isInRotatedEllipse(coord, eye.center, r1, r2, frontEyeTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - eye.center;
+    vec2 rcoord = rotated(coord - eye.center, -frontEyeTheta);
+
     float theta = atan(rcoord.y, rcoord.x);
 
     float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
@@ -951,7 +963,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(0.0, newRcoord.y - rcoord.y);
+    return rotated(vec2(0.0, newRcoord.y - rcoord.y), frontEyeTheta);
   }
 
   vec2 applyFrontEyeSize(vec2 coord, Eye eye, bool isLeft) {
