@@ -1044,33 +1044,43 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return ret;
   }
 
-  vec2 applyNoseHeight(vec2 coord, Nose nose) {
-    float r1 = min(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right));
-    float r2 = dist(nose.lowestCenter, nose.highCenter);
-    float biggerR1 = r1 * 1.8;
-    float biggerR2 = dist(nose.lowestCenter, nose.highestCenter);
+  vec2 applyNoseHeight(vec2 coord, Nose nose, float faceTheta) {
+    vec2 center = (nose.left + nose.right) / 2.0;
+    vec2 rightRcoord = nose.right - center;
+    vec2 lowestCenterRcoord = nose.lowestCenter - center;
+    float tempTheta = atan(rightRcoord.y, rightRcoord.x);
+    rightRcoord = rotated(rightRcoord, -tempTheta);
+    lowestCenterRcoord = rotated(lowestCenterRcoord, -tempTheta);
+    vec2 delta = vec2(0.0, lowestCenterRcoord.y);
+    delta = rotated(delta, tempTheta);
+    center = center + delta;
 
-    if (!isInEllipse(coord, nose.lowestCenter, biggerR1, biggerR2)) {
+    float r1 = dist(center, nose.left); 
+    float r2 = dist(center, nose.highCenter);
+    float biggerR1 = r1 * 1.8;
+    float biggerR2 = dist(center, nose.highestCenter);
+
+    if (!isInRotatedEllipse(coord, center, biggerR1, biggerR2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
     float maxMoveDist = (1.0 - noseHeight) * r2;
 
-    if (isInEllipse(coord, nose.lowestCenter, r1, r2)) {
-      return vec2(0.0, maxMoveDist);
+    if (isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
+      return rotated(vec2(0.0, maxMoveDist), faceTheta);
     } else {
-      vec2 rcoord = coord - nose.lowestCenter;
+      vec2 rcoord = rotated(coord - center, -faceTheta);
       float theta = atan(rcoord.y, rcoord.x);
 
       float smallCircleDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
       float bigCircleDist = (biggerR1 * biggerR2) / sqrt(pow(biggerR1, 2.0) * pow(sin(theta), 2.0) + pow(biggerR2, 2.0) * pow(cos(theta), 2.0));
       float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
 
-      return vec2(0.0, (bigCircleDist - dist) / (bigCircleDist - smallCircleDist) * maxMoveDist);
+      return rotated(vec2(0.0, (bigCircleDist - dist) / (bigCircleDist - smallCircleDist) * maxMoveDist), faceTheta);
     }
   }
 
-  vec2 applyNoseWidth(vec2 coord, Nose nose) {
+  vec2 applyNoseWidth(vec2 coord, Nose nose, float faceTheta) {
     float r1 = min(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right));
     float r2 = dist(nose.lowestCenter, nose.highCenter);
 
@@ -1092,7 +1102,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return vec2(newRcoord.x - rcoord.x, 0.0);
   }
 
-  vec2 applyNoseBridgeSize(vec2 coord, Nose nose) {
+  vec2 applyNoseBridgeSize(vec2 coord, Nose nose, float faceTheta) {
     float r1 = min(nose.lowCenter.x - nose.left.x, nose.right.x - nose.lowCenter.x);
     float r2 = dist(nose.lowCenter, nose.highestCenter);
 
@@ -1114,7 +1124,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return vec2(newRcoord.x - rcoord.x, 0.0);
   }
 
-  vec2 applyNoseBaseSize(vec2 coord, Nose nose) {
+  vec2 applyNoseBaseSize(vec2 coord, Nose nose, float faceTheta) {
     float r1 = min(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right)) * 1.5;
     float r2 = dist(nose.lowestCenter, nose.center);
 
@@ -1136,7 +1146,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return vec2(newRcoord.x - rcoord.x, 0.0);
   }
 
-  vec2 applyNoseEndSize(vec2 coord, Nose nose) {
+  vec2 applyNoseEndSize(vec2 coord, Nose nose, float faceTheta) {
     float r1 = min(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right));
     float r2 = dist(nose.lowestCenter, nose.center);
     r1 = r1 / 1.5;
@@ -1160,12 +1170,15 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyNoseTransforms(vec2 coord, Nose nose) {
+    vec2 rcoord = nose.right - nose.left;
+    float theta = atan(rcoord.y, rcoord.x);
+
     vec2 ret = coord;
-    ret = ret + applyNoseHeight(ret, nose);
-    ret = ret + applyNoseWidth(ret, nose);
-    ret = ret + applyNoseBridgeSize(ret, nose);
-    ret = ret + applyNoseBaseSize(ret, nose);
-    ret = ret + applyNoseEndSize(ret, nose);
+    ret = ret + applyNoseHeight(ret, nose, theta);
+    ret = ret + applyNoseWidth(ret, nose, theta);
+    ret = ret + applyNoseBridgeSize(ret, nose, theta);
+    ret = ret + applyNoseBaseSize(ret, nose, theta);
+    ret = ret + applyNoseEndSize(ret, nose, theta);
 
     return ret;
   }
