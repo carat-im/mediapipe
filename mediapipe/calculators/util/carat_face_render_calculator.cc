@@ -1081,14 +1081,24 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyNoseWidth(vec2 coord, Nose nose, float faceTheta) {
-    float r1 = min(dist(nose.lowestCenter, nose.left), dist(nose.lowestCenter, nose.right));
-    float r2 = dist(nose.lowestCenter, nose.highCenter);
+    vec2 center = (nose.left + nose.right) / 2.0;
+    vec2 rightRcoord = nose.right - center;
+    vec2 lowestCenterRcoord = nose.lowestCenter - center;
+    float tempTheta = atan(rightRcoord.y, rightRcoord.x);
+    rightRcoord = rotated(rightRcoord, -tempTheta);
+    lowestCenterRcoord = rotated(lowestCenterRcoord, -tempTheta);
+    vec2 delta = vec2(0.0, lowestCenterRcoord.y);
+    delta = rotated(delta, tempTheta);
+    center = center + delta;
 
-    if (!isInEllipse(coord, nose.lowestCenter, r1, r2)) {
+    float r1 = dist(center, nose.left);
+    float r2 = dist(center, nose.highCenter);
+
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - nose.lowestCenter;
+    vec2 rcoord = rotated(coord - center, -faceTheta);
     float theta = atan(rcoord.y, rcoord.x);
 
     float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
@@ -1099,18 +1109,28 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(newRcoord.x - rcoord.x, 0.0);
+    return rotated(vec2(newRcoord.x - rcoord.x, 0.0), faceTheta);
   }
 
   vec2 applyNoseBridgeSize(vec2 coord, Nose nose, float faceTheta) {
-    float r1 = min(nose.lowCenter.x - nose.left.x, nose.right.x - nose.lowCenter.x);
-    float r2 = dist(nose.lowCenter, nose.highestCenter);
+    vec2 center = (nose.left + nose.right) / 2.0;
+    vec2 rightRcoord = nose.right - center;
+    vec2 lowCenterRcoord = nose.lowCenter - center;
+    float tempTheta = atan(rightRcoord.y, rightRcoord.x);
+    rightRcoord = rotated(rightRcoord, -tempTheta);
+    lowCenterRcoord = rotated(lowCenterRcoord, -tempTheta);
+    vec2 delta = vec2(0.0, lowCenterRcoord.y);
+    delta = rotated(delta, tempTheta);
+    center = center + delta;
 
-    if (!isInEllipse(coord, nose.lowCenter, r1, r2)) {
+    float r1 = center.x - nose.left.x;
+    float r2 = dist(center, nose.highestCenter);
+
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - nose.lowCenter;
+    vec2 rcoord = rotated(coord - center, -faceTheta);
     float theta = atan(rcoord.y, rcoord.x);
 
     float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
@@ -1121,7 +1141,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(newRcoord.x - rcoord.x, 0.0);
+    return rotated(vec2(newRcoord.x - rcoord.x, 0.0), faceTheta);
   }
 
   vec2 applyNoseBaseSize(vec2 coord, Nose nose, float faceTheta) {
