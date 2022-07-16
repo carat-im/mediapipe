@@ -563,8 +563,6 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       nose_right.x(),
       nose_right.y());
 
-    const NormalizedLandmark& top_lip_bottom = landmarks.landmark(13);
-    const NormalizedLandmark& bottom_lip_top = landmarks.landmark(14);
     const NormalizedLandmark& philtrum = landmarks.landmark(164);
     const NormalizedLandmark& mouth_left = landmarks.landmark(57);
     const NormalizedLandmark& mouth_far_left = landmarks.landmark(207);
@@ -575,8 +573,8 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
 
     glUniform2f(
       glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].center").c_str()),
-      (top_lip_bottom.x() + bottom_lip_top.x()) / 2,
-      (top_lip_bottom.y() + bottom_lip_top.y()) / 2);
+      (mouth_left.x() + mouth_right.x()) / 2,
+      (mouth_left.y() + mouth_right.y()) / 2);
     glUniform2f(
       glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].philtrum").c_str()),
       philtrum.x(),
@@ -1194,41 +1192,41 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return ret;
   }
 
-  vec2 applyPhiltrumHeight(vec2 coord, Mouth mouth) {
-    float r1 = min(dist(mouth.center, mouth.left), dist(mouth.center, mouth.right));
-    float r2 = dist(mouth.center, mouth.philtrum) / 2.0;
-    float biggerR1 = min(dist(mouth.center, mouth.farLeft), dist(mouth.center, mouth.farRight));
-    float biggerR2 = dist(mouth.center, mouth.philtrum);
+  vec2 applyPhiltrumHeight(vec2 coord, Mouth mouth, float faceTheta) {
+    float r1 = dist(mouth.center, mouth.left);
+    float r2 = dist(mouth.center, mouth.philtrum) / 1.5;
+    float biggerR1 = dist(mouth.center, mouth.farLeft);
+    float biggerR2 = r2 * 1.5;
 
-    if (!isInEllipse(coord, mouth.center, biggerR1, biggerR2)) {
+    if (!isInRotatedEllipse(coord, mouth.center, biggerR1, biggerR2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
     float maxMoveDist = (1.0 - philtrumHeight) * r2;
 
-    if (isInEllipse(coord, mouth.center, r1, r2)) {
-      return vec2(0.0, maxMoveDist);
+    if (isInRotatedEllipse(coord, mouth.center, r1, r2, faceTheta)) {
+      return rotated(vec2(0.0, maxMoveDist), faceTheta);
     } else {
-      vec2 rcoord = coord - mouth.center;
+      vec2 rcoord = rotated(coord - mouth.center, -faceTheta);
       float theta = atan(rcoord.y, rcoord.x);
 
       float smallCircleDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
       float bigCircleDist = (biggerR1 * biggerR2) / sqrt(pow(biggerR1, 2.0) * pow(sin(theta), 2.0) + pow(biggerR2, 2.0) * pow(cos(theta), 2.0));
       float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
 
-      return vec2(0.0, (bigCircleDist - dist) / (bigCircleDist - smallCircleDist) * maxMoveDist);
+      return rotated(vec2(0.0, (bigCircleDist - dist) / (bigCircleDist - smallCircleDist) * maxMoveDist), faceTheta);
     }
   }
 
-  vec2 applyMouthSize(vec2 coord, Mouth mouth) {
-    float r1 = min(dist(mouth.center, mouth.left), dist(mouth.center, mouth.right));
-    float r2 = dist(mouth.center, mouth.philtrum);
+  vec2 applyMouthSize(vec2 coord, Mouth mouth, float faceTheta) {
+    float r1 = dist(mouth.center, mouth.left) * max(1.0, lipSize);
+    float r2 = dist(mouth.center, mouth.philtrum) * max(1.0, lipSize);
 
-    if (!isInEllipse(coord, mouth.center, r1, r2)) {
+    if (!isInRotatedEllipse(coord, mouth.center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - mouth.center;
+    vec2 rcoord = rotated(coord - mouth.center, -faceTheta);
     float theta = atan(rcoord.y, rcoord.x);
 
     float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
@@ -1239,25 +1237,25 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return newRcoord - rcoord;
+    return rotated(newRcoord - rcoord, faceTheta);
   }
 
-  vec2 applyMouthEndUp(vec2 coord, Mouth mouth) {
+  vec2 applyMouthEndUp(vec2 coord, Mouth mouth, float faceTheta) {
     vec2 center = mouth.leftTip;
-    float r1 = dist(center, mouth.left);
+    float r1 = dist(center, mouth.left) * 1.5;
     float r2 = r1 * 1.5;
 
-    if (!isInEllipse(coord, center, r1, r2)) {
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       center = mouth.rightTip;
-      r1 = dist(center, mouth.right);
+      r1 = dist(center, mouth.right) * 1.5;
       r2 = r1 * 1.5;
     }
 
-    if (!isInEllipse(coord, center, r1, r2)) {
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - center;
+    vec2 rcoord = rotated(coord - center, -faceTheta);
     if (rcoord.y < 0.0) {
       return vec2(0.0, 0.0);
     }
@@ -1272,14 +1270,17 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(0.0, newRcoord.y - rcoord.y);
+    return rotated(vec2(0.0, newRcoord.y - rcoord.y), faceTheta);
   }
 
   vec2 applyMouthTransforms(vec2 coord, Mouth mouth) {
+    vec2 rcoord = mouth.right - mouth.left;
+    float theta = atan(rcoord.y, rcoord.x);
+
     vec2 ret = coord;
-    ret = ret + applyPhiltrumHeight(ret, mouth);
-    ret = ret + applyMouthSize(ret, mouth);
-    ret = ret + applyMouthEndUp(ret, mouth);
+    ret = ret + applyPhiltrumHeight(ret, mouth, theta);
+    ret = ret + applyMouthSize(ret, mouth, theta);
+    ret = ret + applyMouthEndUp(ret, mouth, theta);
 
     return ret;
   }
