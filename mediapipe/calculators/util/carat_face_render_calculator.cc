@@ -1285,16 +1285,16 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return ret;
   }
 
-  vec2 applyForeheadSize(vec2 coord, Head head) {
+  vec2 applyForeheadSize(vec2 coord, Head head, float faceTheta) {
     vec2 center = head.foreheadCenter;
     float verticalDist = dist(center, head.foreheadBottom);
     center.y = center.y - verticalDist;
     float r1 = min(dist(head.foreheadCenter, head.foreheadLeft), dist(head.foreheadCenter, head.foreheadRight)) * 1.5;
     float r2 = verticalDist * 2.0;
 
-    vec2 rcoord = coord - center;
+    vec2 rcoord = rotated(coord - center, -faceTheta);
 
-    if (!isInEllipse(coord, center, r1, r2) || rcoord.y < 0.0) {
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta) || rcoord.y < 0.0) {
       return vec2(0.0, 0.0);
     }
 
@@ -1308,31 +1308,31 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(0.0, newRcoord.y - rcoord.y);
+    return rotated(vec2(0.0, newRcoord.y - rcoord.y), faceTheta);
   }
 
-  vec2 applyCheekboneSize(vec2 coord, Head head) {
+  vec2 applyCheekboneSize(vec2 coord, Head head, float faceTheta) {
     bool isLeft = true;
     vec2 center = head.cheekboneLeftCenter;
-    float verticalDist = dist(center, head.templeLeftCenter);
-    center.y = center.y + verticalDist / 2.0;
-    float r1 = verticalDist;
-    float r2 = verticalDist * 1.2;
+    float r1 = dist(center, head.templeLeftCenter);
+    center.x = center.x + r1 / 2.0;
+    r1 = r1 * 2.0;
+    float r2 = r1 * 1.5;
 
-    if (!isInEllipse(coord, center, r1, r2)) {
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       isLeft = false;
       center = head.cheekboneRightCenter;
-      verticalDist = dist(center, head.templeRightCenter);
-      center.y = center.y + verticalDist / 2.0;
-      r1 = verticalDist;
-      r2 = verticalDist * 1.2;
+      r1 = dist(center, head.templeRightCenter);
+      center.x = center.x - r1 / 2.0;
+      r1 = r1 * 2.0;
+      r2 = r1 * 1.5;
     }
 
-    if (!isInEllipse(coord, center, r1, r2)) {
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - center;
+    vec2 rcoord = rotated(coord - center, -faceTheta);
     if ((isLeft && rcoord.x > 0.0) || (!isLeft && rcoord.x < 0.0)) {
       return vec2(0.0, 0.0);
     }
@@ -1347,44 +1347,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(newRcoord.x - rcoord.x, 0.0);
-  }
-
-  vec2 applyTempleSize(vec2 coord, Head head) {
-    bool isLeft = true;
-    vec2 center = head.templeLeftCenter;
-    float verticalDist = dist(center, head.cheekboneLeftCenter);
-    float r1 = verticalDist;
-    float r2 = verticalDist * 1.2;
-
-    if (!isInEllipse(coord, center, r1, r2)) {
-      isLeft = false;
-      center = head.templeRightCenter;
-      verticalDist = dist(center, head.cheekboneRightCenter);
-      r1 = verticalDist;
-      r2 = verticalDist * 1.2;
-    }
-
-    if (!isInEllipse(coord, center, r1, r2)) {
-      return vec2(0.0, 0.0);
-    }
-
-    vec2 rcoord = coord - center;
-    if ((isLeft && rcoord.x > 0.0) || (!isLeft && rcoord.x < 0.0)) {
-      return vec2(0.0, 0.0);
-    }
-
-    float theta = atan(rcoord.y, rcoord.x);
-
-    float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
-    float dist = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
-    float appliedDist = 1.0 / templeSize * dist;
-
-    float factor = dist / totalDist;
-    float newDist = factor * dist + (1.0 - factor) * appliedDist;
-
-    vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(newRcoord.x - rcoord.x, 0.0);
+    return rotated(vec2(newRcoord.x - rcoord.x, 0.0), faceTheta);
   }
 
   vec2 applyChinSize(vec2 coord, Head head) {
@@ -1489,10 +1452,12 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyHeadTransforms(vec2 coord, Head head) {
+    vec2 rcoord = head.foreheadRight - head.foreheadLeft;
+    float theta = atan(rcoord.y, rcoord.x);
+
     vec2 ret = coord;
-    ret = ret + applyForeheadSize(ret, head);
-    ret = ret + applyCheekboneSize(ret, head);
-    ret = ret + applyTempleSize(ret, head);
+    ret = ret + applyForeheadSize(ret, head, theta);
+    ret = ret + applyCheekboneSize(ret, head, theta);
     ret = ret + applyChinSize(ret, head);
     ret = ret + applyChinHeight(ret, head);
     ret = ret + applyChinSharpness(ret, head);
