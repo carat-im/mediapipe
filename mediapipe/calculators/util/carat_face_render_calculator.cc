@@ -1350,28 +1350,30 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return rotated(vec2(newRcoord.x - rcoord.x, 0.0), faceTheta);
   }
 
-  vec2 applyChinSize(vec2 coord, Head head) {
+  vec2 applyChinSize(vec2 coord, Head head, float faceTheta) {
     bool isLeft = true;
     vec2 center = head.chinLeft;
-    float horizontalDist = head.chinTop.x - center.x;
-    center.x = center.x + horizontalDist / 2.0;
-    float r1 = horizontalDist / 1.5;
-    float r2 = head.chinBottomCenter.y - center.y;
+    vec2 chinTopRcoord = rotated(head.chinTop - center, -faceTheta);
+    vec2 delta = rotated(vec2(chinTopRcoord.x / 4.0, 0.0), faceTheta);
+    center = center + delta;
+    float r1 = chinTopRcoord.x / 1.5;
+    float r2 = chinTopRcoord.x;
 
-    if (!isInEllipse(coord, center, r1, r2)) {
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       isLeft = false;
       center = head.chinRight;
-      horizontalDist = center.x - head.chinTop.x;
-      center.x = center.x - horizontalDist / 2.0;
-      r1 = horizontalDist / 1.5;
-      r2 = head.chinBottomCenter.y - center.y;
+      chinTopRcoord = rotated(head.chinTop - center, -faceTheta);
+      delta = rotated(vec2(chinTopRcoord.x / 4.0, 0.0), faceTheta);
+      center = center + delta;
+      r1 = -chinTopRcoord.x / 1.5;
+      r2 = -chinTopRcoord.x;
     }
 
-    if (!isInEllipse(coord, center, r1, r2)) {
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - center;
+    vec2 rcoord = rotated(coord - center, -faceTheta);
     if ((isLeft && rcoord.x > 0.0) || (!isLeft && rcoord.x < 0.0)) {
       return vec2(0.0, 0.0);
     }
@@ -1386,19 +1388,22 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(newRcoord.x - rcoord.x, 0.0);
+    return rotated(vec2(newRcoord.x - rcoord.x, 0.0), faceTheta);
   }
 
-  vec2 applyChinHeight(vec2 coord, Head head) {
-    vec2 center = head.chinTop;
-    float r1 = min(dist(center, head.chinLeft), dist(center, head.chinRight)) * 1.2;
-    float r2 = dist(center, head.chinBottomCenter) * 1.5;
+  vec2 applyChinHeight(vec2 coord, Head head, float faceTheta) {
+    vec2 center = (head.cheekboneLeftCenter + head.cheekboneRightCenter) / 2.0;
+    float r1 = dist(center, head.cheekboneLeftCenter);
+    float r2 = dist(center, head.chinBottomCenter);
+    vec2 delta = rotated(vec2(0.0, r1 / 2.0), faceTheta);
+    center = center + delta;
+    r1 = r1 * 1.5;
 
-    if (!isInEllipse(coord, center, r1, r2)) {
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = coord - center;
+    vec2 rcoord = rotated(coord - center, -faceTheta);
     if (rcoord.y < 0.0) {
       return vec2(0.0, 0.0);
     }
@@ -1413,7 +1418,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float newDist = factor * dist + (1.0 - factor) * appliedDist;
 
     vec2 newRcoord = vec2(newDist * cos(theta), newDist * sin(theta));
-    return vec2(0.0, newRcoord.y - rcoord.y);
+    return rotated(vec2(0.0, newRcoord.y - rcoord.y), faceTheta);
   }
 
   vec2 applyChinSharpness(vec2 coord, Head head) {
@@ -1458,8 +1463,8 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     vec2 ret = coord;
     ret = ret + applyForeheadSize(ret, head, theta);
     ret = ret + applyCheekboneSize(ret, head, theta);
-    ret = ret + applyChinSize(ret, head);
-    ret = ret + applyChinHeight(ret, head);
+    ret = ret + applyChinSize(ret, head, theta);
+    ret = ret + applyChinHeight(ret, head, theta);
     ret = ret + applyChinSharpness(ret, head);
 
     return ret;
