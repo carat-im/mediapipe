@@ -1564,6 +1564,42 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return result;
   }
 
+  vec3 rgb2lab(vec3 rgb) {
+    float r = rgb.r;
+    float g = rgb.g;
+    float b = rgb.b;
+    float x = 0.0;
+    float y = 0.0;
+    float z = 0.0;
+
+    r = (r > 0.04045) ? pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
+    g = (g > 0.04045) ? pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
+    b = (b > 0.04045) ? pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
+
+    x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+    y = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 1.00000;
+    z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+
+    x = (x > 0.008856) ? pow(x, 1.0/3.0) : (7.787 * x) + 16.0/116.0;
+    y = (y > 0.008856) ? pow(y, 1.0/3.0) : (7.787 * y) + 16.0/116.0;
+    z = (z > 0.008856) ? pow(z, 1.0/3.0) : (7.787 * z) + 16.0/116.0;
+
+    vec3 res = vec3((116.0 * y) - 16.0, 500.0 * (x - y), 200.0 * (y - z));
+    res.x = res.x / 100.0;
+    res.y = (res.y + 110.0) / 220.0;
+    res.z = (res.z + 110.0) / 220.0;
+    return res;
+  }
+
+  float skin_mask(vec3 color) {
+    vec3 lab = rgb2lab(color); // return values in the range [0, 1]
+    float a = smoothstep(0.45, 0.55, lab.g);
+    float b = smoothstep(0.46, 0.54, lab.b);
+    float c = 1.0 - smoothstep(0.9, 1.0, length(lab.gb));
+    float d = 1.0 - smoothstep(0.98, 1.02, lab.r);
+    return min(min(min(a, b), c), d);
+  }
+
   void main() {
     vec2 coord = sample_coordinate;
     for (int i = 0; i < faceCount; i++) {
@@ -1584,36 +1620,12 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
     vec4 out_pix = texture2D(input_frame, coord);
 
-    float r = out_pix.r * 255.0;
-    float g = out_pix.g * 255.0;
-    float b = out_pix.b * 255.0;
-    float minRgb = min(min(r, g), b);
-    float maxRgb = max(max(r, g), b);
-    float y = 0.299 * r + 0.587 * g + 0.114 * b;
-    float cr = (r - y) * 0.713 + 0.5;
-    float cb = (b - y) * 0.564 + 0.5;
-    float v = maxRgb;
-    float s = 0.0;
-    if (v != 0.0) {
-      s = (v - minRgb) / v;
-    }
-    float h = 0.0;
-    if (v == r) {
-      h = (60.0 * (g - b)) / (v - minRgb);
-    } else if (v == g) {
-      h = 120.0 + (60.0 * (b - r)) / (v - minRgb);
-    } else if (v == b) {
-      h = 240.0 + (60.0 * (r - g)) / (v - minRgb);
-    }
-    if (h < 0.0) {
-      h = h + 360.0;
-    }
-
-    bool isSkin = (h >= 0.0 && h <= 50.0 && s >= 0.23 && s <= 0.68 && r > 95.0 && g > 40.0 && b > 20.0 && r > g && r > b && abs(r - g) > 15.0) || (r > 95.0 && g > 40.0 && b > 20.0 && r > g && r > b && abs(r - g) > 15.0 && cr > 135.0 && cb > 85.0 && y > 80.0 && cr <= 1.5862 * cb + 20.0 && cr >= 0.3448 * cb + 76.2069 && cr >= -4.5652 * cb + 234.5652 && cr <= -1.15 * cb + 301.75 && cr <= -2.2857 * cb + 432.85);
-    if (isSkin && skinSmooth > 0.0) {
+    if (skinSmooth > 0.0) {
       vec3 blurred = bilateralFilter(input_frame, coord);
       vec3 highpass = out_pix.rgb - blurred + vec3(0.5, 0.5, 0.5);
-      fragColor = overlay(out_pix, vec4(1.0 - highpass.r, 1.0 - highpass.g, 1.0 - highpass.b, 1.0));
+      vec4 smoothed = overlay(out_pix, vec4(1.0 - highpass.r, 1.0 - highpass.g, 1.0 - highpass.b, 1.0));
+      float factor = skin_mask(out_pix.rgb);
+      fragColor = (1.0 - factor) * out_pix + factor * smoothed;
     } else {
       fragColor = out_pix;
     }
