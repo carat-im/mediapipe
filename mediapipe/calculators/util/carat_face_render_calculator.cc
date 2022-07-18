@@ -1553,6 +1553,17 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return final_colour / Z;
   }
 
+  vec4 overlay(vec4 a, vec4 b) {
+    vec4 x = vec4(2.0) * a * b;
+    vec4 y = vec4(1.0) - vec4(2.0) * (vec4(1.0)-a) * (vec4(1.0)-b);
+    vec4 result;
+    result.r = mix(x.r, y.r, float(a.r > 0.5));
+    result.g = mix(x.g, y.g, float(a.g > 0.5));
+    result.b = mix(x.b, y.b, float(a.b > 0.5));
+    result.a = mix(x.a, y.a, float(a.a > 0.5));
+    return result;
+  }
+
   void main() {
     vec2 coord = sample_coordinate;
     for (int i = 0; i < faceCount; i++) {
@@ -1571,7 +1582,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
       coord = applyHeadTransforms(coord, head);
     }
 
-    vec3 out_pix = texture2D(input_frame, coord).rgb;
+    vec4 out_pix = texture2D(input_frame, coord);
 
     float r = out_pix.r * 255.0;
     float g = out_pix.g * 255.0;
@@ -1600,12 +1611,14 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
     bool isSkin = (h >= 0.0 && h <= 50.0 && s >= 0.23 && s <= 0.68 && r > 95.0 && g > 40.0 && b > 20.0 && r > g && r > b && abs(r - g) > 15.0) || (r > 95.0 && g > 40.0 && b > 20.0 && r > g && r > b && abs(r - g) > 15.0 && cr > 135.0 && cb > 85.0 && y > 80.0 && cr <= 1.5862 * cb + 20.0 && cr >= 0.3448 * cb + 76.2069 && cr >= -4.5652 * cb + 234.5652 && cr <= -1.15 * cb + 301.75 && cr <= -2.2857 * cb + 432.85);
     if (isSkin && skinSmooth > 0.0) {
-      fragColor.rgb = bilateralFilter(input_frame, coord);
+      vec3 blurred = bilateralFilter(input_frame, coord);
+      vec3 highpass = out_pix.rgb - blurred + vec3(0.5, 0.5, 0.5);
+      fragColor = overlay(out_pix, vec4(1.0 - highpass.r, 1.0 - highpass.g, 1.0 - highpass.b, 1.0));
     } else {
-      fragColor.rgb = out_pix;
+      fragColor = out_pix;
     }
 
-    fragColor.a = 1.0;
+    // fragColor.a = 1.0;
   }
   )";
 
