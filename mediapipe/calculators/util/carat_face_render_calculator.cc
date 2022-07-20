@@ -547,6 +547,7 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     const NormalizedLandmark& nose_lowest_center = landmarks.landmark(4);
     const NormalizedLandmark& nose_left = landmarks.landmark(203);
     const NormalizedLandmark& nose_right = landmarks.landmark(423);
+    const NormalizedLandmark& philtrum = landmarks.landmark(164);
 
     glUniform2f(
       glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].highestCenter").c_str()),
@@ -576,8 +577,11 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].right").c_str()),
       nose_right.x(),
       nose_right.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("noses[" + std::to_string(i) + "].philtrum").c_str()),
+      philtrum.x(),
+      philtrum.y());
 
-    const NormalizedLandmark& philtrum = landmarks.landmark(164);
     const NormalizedLandmark& mouth_left = landmarks.landmark(57);
     const NormalizedLandmark& mouth_far_left = landmarks.landmark(207);
     const NormalizedLandmark& mouth_right = landmarks.landmark(287);
@@ -778,6 +782,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     vec2 lowestCenter;
     vec2 left;
     vec2 right;
+    vec2 philtrum;
   };
 
   struct Mouth {
@@ -1072,7 +1077,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     center = center + delta;
 
     float r1 = dist(center, nose.left); 
-    float r2 = dist(center, nose.highCenter);
+    float r2 = dist(center, nose.philtrum);
     float biggerR1 = r1 * 1.8;
     float biggerR2 = dist(center, nose.highestCenter);
 
@@ -1182,6 +1187,12 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     float r1 = dist(center, nose.left);
     float r2 = dist(center, nose.center);
     r1 = r1 / 1.5;
+
+    center = nose.lowestCenter;
+    float leftDist = dist(center, nose.left);
+    float rightDist = dist(center, nose.right);
+    float rightRatio = rightDist / (leftDist + rightDist);
+    center = center + rotated(vec2(r1 * (rightRatio - 0.5), 0.0), faceTheta);
 
     if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
