@@ -33,6 +33,8 @@ output_stream: "output_video"
 # Collection of detected/processed faces, each represented as a list of
 # landmarks. (std::vector<NormalizedLandmarkList>)
 output_stream: "multi_face_landmarks"
+# Detected faces. (std::vector<Detection>)
+output_stream: "face_detections"
 
 # Throttles the images flowing downstream for flow control. It passes through
 # the very first incoming image unaltered, and waits for downstream nodes
@@ -83,6 +85,8 @@ node {
   calculator: "CaratFaceRendererGpu"
   input_stream: "IMAGE:throttled_input_video"
   input_stream: "LANDMARKS:multi_face_landmarks"
+  input_stream: "NORM_RECTS:face_rects_from_landmarks"
+  input_stream: "DETECTIONS:face_detections"
   input_side_packet: "FOREHEAD_SIZE:forehead_size"
   input_side_packet: "CHEEKBONE_SIZE:cheekbone_size"
   input_side_packet: "TEMPLE_SIZE:temple_size"

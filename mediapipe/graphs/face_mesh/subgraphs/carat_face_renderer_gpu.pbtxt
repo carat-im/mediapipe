@@ -7,6 +7,11 @@ input_stream: "IMAGE:input_image"
 # Collection of detected/predicted faces, each represented as a list of
 # landmarks. (std::vector<NormalizedLandmarkList>)
 input_stream: "LANDMARKS:multi_face_landmarks"
+# Regions of interest calculated based on palm detections.
+# (std::vector<NormalizedRect>)
+input_stream: "NORM_RECTS:rects"
+# Detected palms. (std::vector<Detection>)
+input_stream: "DETECTIONS:detections"
 
 input_side_packet: "FOREHEAD_SIZE:forehead_size"
 input_side_packet: "CHEEKBONE_SIZE:cheekbone_size"
@@ -37,6 +42,7 @@ node {
   calculator: "CaratFaceRenderCalculator"
   input_stream: "IMAGE_GPU:input_image"
   input_stream: "MULTI_FACE_LANDMARKS:multi_face_landmarks"
+  input_stream: "NORM_RECTS:rects"
   input_side_packet: "FOREHEAD_SIZE:forehead_size"
   input_side_packet: "CHEEKBONE_SIZE:cheekbone_size"
   input_side_packet: "TEMPLE_SIZE:temple_size"

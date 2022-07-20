@@ -2,12 +2,14 @@
 #import "mediapipe/objc/MPPGraph.h"
 
 #include "mediapipe/framework/formats/landmark.pb.h"
+#include "mediapipe/framework/formats/detection.pb.h"
 
 static NSString* const kGraphName = @"carat_face_mesh_mobile_gpu";
 static const char* kInputStream = "input_video";
 static const char* kOutputStream = "output_video";
 static const char* kNumFacesInputSidePacket = "num_faces";
 static const char* kLandmarksOutputStream = "multi_face_landmarks";
+static const char* kDetectionsOutputStream = "face_detections";
 
 static const int kNumFaces = 4;
 
@@ -99,7 +101,8 @@ static const char* kSkinSmoothInputSidePacket = "skin_smooth";
         self.mediapipeGraph.maxFramesInFlight = 2;
 
         [self.mediapipeGraph addFrameOutputStream:kOutputStream outputPacketType:MPPPacketTypePixelBuffer];
-        [self.mediapipeGraph addFrameOutputStream:kLandmarksOutputStream outputPacketType:MPPPacketTypeRaw];
+        // [self.mediapipeGraph addFrameOutputStream:kLandmarksOutputStream outputPacketType:MPPPacketTypeRaw];
+        // [self.mediapipeGraph addFrameOutputStream:kDetectionsOutputStream outputPacketType:MPPPacketTypeRaw];
         [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<int>(kNumFaces)) named:kNumFacesInputSidePacket];
 
         mediapipe::Packet packet = mediapipe::AdoptAsUniquePtr<float>(new float(1.f));
@@ -298,8 +301,12 @@ static const char* kSkinSmoothInputSidePacket = "skin_smooth";
 
 // Invoked on a Mediapipe worker thread.
 - (void)mediapipeGraph:(MPPGraph*)graph didOutputPacket:(const ::mediapipe::Packet&)packet fromStream:(const std::string&)streamName {
-    if (streamName == kLandmarksOutputStream) {
-        // something.
+    if (streamName == kDetectionsOutputStream && !packet.IsEmpty()) {
+      // const auto& detections = packet.Get<std::vector<::mediapipe::Detection>>();
+      // for (int i = 0; i < detections.size(); ++i) {
+        // const auto& detection = detections[i];
+        // NSLog(@"\tDetection [%d] trackid: %s detectionId: %lu", i, detection.track_id().c_str(), detection.detection_id());
+      // }
     }
 }
 

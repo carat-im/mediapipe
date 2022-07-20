@@ -13,8 +13,6 @@ input_stream: "NORM_RECTS:rects"
 # Detected palms. (std::vector<Detection>)
 input_stream: "DETECTIONS:detections"
 
-input_side_packet: "EYE_SIZE:eye_size"
-
 # GPU image with rendered data. (GpuBuffer)
 output_stream: "IMAGE:output_image"
 
@@ -32,7 +30,7 @@ node {
   node_options: {
     [type.googleapis.com/mediapipe.DetectionsToRenderDataCalculatorOptions] {
       thickness: 4.0
-      color { r: 255 g: 0 b: 0 }
+      color { r: 0 g: 255 b: 0 }
     }
   }
 }
@@ -55,9 +53,9 @@ node {
   output_stream: "RENDER_DATA:landmarks_render_data"
   node_options: {
     [type.googleapis.com/mediapipe.LandmarksToRenderDataCalculatorOptions] {
-      landmark_color { r: 0 g: 255 b: 0 }
-      connection_color { r: 0 g: 255 b: 255 }
-      thickness: 1
+      landmark_color { r: 255 g: 0 b: 0 }
+      connection_color { r: 0 g: 255 b: 0 }
+      thickness: 2
       visualize_landmark_depth: false
     }
   }
@@ -81,7 +79,7 @@ node {
   node_options: {
     [type.googleapis.com/mediapipe.RectToRenderDataCalculatorOptions] {
       filled: false
-      color { r: 255 g: 140 b: 245 }
+      color { r: 255 g: 0 b: 0 }
       thickness: 4.0
     }
   }
@@ -94,7 +92,5 @@ node {
   input_stream: "detections_render_data"
   input_stream: "VECTOR:0:multi_face_landmarks_render_data"
   input_stream: "rects_render_data"
-  input_stream: "MULTI_FACE_LANDMARKS:multi_face_landmarks"
-  input_side_packet: "EYE_SIZE:eye_size"
   output_stream: "IMAGE_GPU:output_image"
 }

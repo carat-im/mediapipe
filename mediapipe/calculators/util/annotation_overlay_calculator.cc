@@ -22,7 +22,6 @@
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
 #include "mediapipe/framework/formats/video_stream_header.h"
-#include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
@@ -46,9 +45,6 @@ namespace {
 constexpr char kVectorTag[] = "VECTOR";
 constexpr char kGpuBufferTag[] = "IMAGE_GPU";
 constexpr char kImageFrameTag[] = "IMAGE";
-constexpr char kMultiFaceLandmarksTag[] = "MULTI_FACE_LANDMARKS";
-
-constexpr char kEyeSizeTag[] = "EYE_SIZE";
 
 enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
 
@@ -229,14 +225,6 @@ absl::Status AnnotationOverlayCalculator::GetContract(CalculatorContract* cc) {
 #if !MEDIAPIPE_DISABLE_GPU
     MP_RETURN_IF_ERROR(mediapipe::GlCalculatorHelper::UpdateContract(cc));
 #endif  // !MEDIAPIPE_DISABLE_GPU
-  }
-
-  if (cc->Inputs().HasTag(kMultiFaceLandmarksTag)) {
-    cc->Inputs().Tag(kMultiFaceLandmarksTag).Set<std::vector<NormalizedLandmarkList>>();
-  }
-
-  if (cc->InputSidePackets().HasTag(kEyeSizeTag)) {
-    cc->InputSidePackets().Tag(kEyeSizeTag).Set<std::unique_ptr<float>>();
   }
 
   return absl::OkStatus();
@@ -543,66 +531,6 @@ absl::Status AnnotationOverlayCalculator::GlRender(CalculatorContext* cc) {
   // program
   glUseProgram(program_);
 
-  std::vector<NormalizedLandmarkList> empty_multi_face_landmarks;
-  const auto& multi_face_landmarks =
-      cc->Inputs().Tag(kMultiFaceLandmarksTag).IsEmpty()
-          ? empty_multi_face_landmarks
-          : cc->Inputs().Tag(kMultiFaceLandmarksTag).Get<std::vector<NormalizedLandmarkList>>();
-
-  glUniform1i(glGetUniformLocation(program_, "faceCount"), multi_face_landmarks.size());
-
-  if (cc->InputSidePackets().HasTag(kEyeSizeTag)) {
-    glUniform1f(glGetUniformLocation(program_, "eyeSize"), *cc->InputSidePackets().Tag(kEyeSizeTag).Get<std::unique_ptr<float>>());
-  }
-
-  for (int i = 0; i < multi_face_landmarks.size(); ++i) {
-    const NormalizedLandmarkList& landmarks = multi_face_landmarks[i];
-
-    const NormalizedLandmark& left_eye_left = landmarks.landmark(226);
-    const NormalizedLandmark& left_eye_right = landmarks.landmark(243);
-    const NormalizedLandmark& left_eye_top = landmarks.landmark(27);
-
-    cv::Point2f left = cv::Point2f(left_eye_left.x(), left_eye_left.y());
-    cv::Point2f right = cv::Point2f(left_eye_right.x(), left_eye_right.y());
-    cv::Point2f top = cv::Point2f(left_eye_top.x(), left_eye_top.y());
-    cv::Point2f center = (left + right) / 2;
-    float width = std::sqrt(std::pow(right.x - center.x, 2) + std::pow(right.y - center.y, 2));
-    float height = std::sqrt(std::pow(top.x - center.x, 2) + std::pow(top.y - center.y, 2));
-
-    glUniform2f(
-      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].center").c_str()),
-      center.x,
-      center.y);
-    glUniform1f(
-      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].width").c_str()),
-      width);
-    glUniform1f(
-      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].height").c_str()),
-      height);
-
-    const NormalizedLandmark& right_eye_left = landmarks.landmark(463);
-    const NormalizedLandmark& right_eye_right = landmarks.landmark(446);
-    const NormalizedLandmark& right_eye_top = landmarks.landmark(257);
-
-    left = cv::Point2f(right_eye_left.x(), right_eye_left.y());
-    right = cv::Point2f(right_eye_right.x(), right_eye_right.y());
-    top = cv::Point2f(right_eye_top.x(), right_eye_top.y());
-    center = (left + right) / 2;
-    width = std::sqrt(std::pow(left.x - center.x, 2) + std::pow(left.y - center.y, 2));
-    height = std::sqrt(std::pow(top.x - center.x, 2) + std::pow(top.y - center.y, 2));
-
-    glUniform2f(
-      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].center").c_str()),
-      center.x,
-      center.y);
-    glUniform1f(
-      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].width").c_str()),
-      width);
-    glUniform1f(
-      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].height").c_str()),
-      height);
-  }
-
   // vertex storage
   GLuint vbo[2];
   glGenBuffers(2, vbo);
@@ -660,8 +588,6 @@ absl::Status AnnotationOverlayCalculator::GlSetup(CalculatorContext* cc) {
     out vec4 fragColor;
   #endif  // GL_ES
 
-  #define PI 3.1415926535897932384626433832795
-
     in vec2 sample_coordinate;
     uniform sampler2D input_frame;
     // "overlay" texture has top-left origin (OpenCV mat with annotations has
@@ -669,52 +595,8 @@ absl::Status AnnotationOverlayCalculator::GlSetup(CalculatorContext* cc) {
     uniform sampler2D overlay;
     uniform vec3 transparent_color;
 
-    struct Eye {
-      vec2 center;
-      float width;
-      float height;
-    };
-
-    // 우리는 우선 최대 4명만 인식한다고 가정함.
-    uniform Eye leftEyes[4];
-    uniform Eye rightEyes[4];
-    uniform float eyeSize;
-
-    uniform int faceCount;
-
-    bool isInEye(vec2 coord, Eye eye) {
-      return pow(coord.x - eye.center.x, 2.0) / pow(eye.width, 2.0) +
-          pow(coord.y - eye.center.y, 2.0) / pow(eye.height, 2.0) <= 1.0;
-    }
-
-    vec2 applyEyeTransform(vec2 coord, Eye eye, bool isLeft) {
-      vec2 rcoord = coord - eye.center;
-      float r = sqrt(pow(rcoord.x, 2.0) + pow(rcoord.y, 2.0));
-      float theta = atan(rcoord.y, rcoord.x);
-
-      float radius = (eye.width * eye.height) / sqrt(pow(eye.width, 2.0) * pow(sin(theta), 2.0) + pow(eye.height, 2.0) * pow(cos(theta), 2.0));
-      float factor = r / radius;
-      r = factor * r + (1.0 - factor) * eyeSize  * r;
-      vec2 newRcoord = vec2(r * cos(theta), r * sin(theta));
-      return newRcoord + eye.center;
-    }
-
     void main() {
-      vec2 coord = sample_coordinate;
-      for (int i = 0; i < faceCount; i++) {
-        Eye leftEye = leftEyes[i];
-        Eye rightEye = rightEyes[i];
-
-        if (isInEye(coord, leftEye)) {
-          coord = applyEyeTransform(coord, leftEye, true);
-          break;
-        } else if (isInEye(coord, rightEye)) {
-          coord = applyEyeTransform(coord, rightEye, false);
-          break;
-        }
-      }
-
-      vec3 image_pix = texture2D(input_frame, coord).rgb;
+      vec3 image_pix = texture2D(input_frame, sample_coordinate).rgb;
   #ifdef INPUT_FRAME_HAS_TOP_LEFT_ORIGIN
       // "input_frame" has top-left origin same as "overlay", hence overlaying
       // as is.

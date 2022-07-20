@@ -21,6 +21,7 @@
 #include "mediapipe/framework/formats/image_frame_opencv.h"
 #include "mediapipe/framework/formats/video_stream_header.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
+#include "mediapipe/framework/formats/rect.pb.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
@@ -38,6 +39,7 @@ namespace {
 
 constexpr char kGpuBufferTag[] = "IMAGE_GPU";
 constexpr char kMultiFaceLandmarksTag[] = "MULTI_FACE_LANDMARKS";
+constexpr char kNormRectsTag[] = "NORM_RECTS";
 
 constexpr char kForeheadSizeTag[] = "FOREHEAD_SIZE";
 constexpr char kCheekboneSizeTag[] = "CHEEKBONE_SIZE";
@@ -118,6 +120,9 @@ absl::Status CaratFaceRenderCalculator::GetContract(CalculatorContract* cc) {
 
   if (cc->Inputs().HasTag(kMultiFaceLandmarksTag)) {
     cc->Inputs().Tag(kMultiFaceLandmarksTag).Set<std::vector<NormalizedLandmarkList>>();
+  }
+  if (cc->Inputs().HasTag(kNormRectsTag)) {
+    cc->Inputs().Tag(kNormRectsTag).Set<std::vector<NormalizedRect>>();
   }
 
   if (cc->InputSidePackets().HasTag(kForeheadSizeTag)) {
@@ -374,6 +379,25 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
   // program
   glUseProgram(program_);
 
+  std::vector<NormalizedRect> empty_rects;
+  const auto& rects =
+      cc->Inputs().Tag(kNormRectsTag).IsEmpty()
+          ? empty_rects
+          : cc->Inputs().Tag(kNormRectsTag).Get<std::vector<NormalizedRect>>();
+
+  for (int i = 0; i < rects.size(); ++i) {
+    const NormalizedRect& rect = rects[i];
+    glUniform2f(
+      glGetUniformLocation(program_, ("rois[" + std::to_string(i) + "].center").c_str()),
+      rect.x_center(), rect.y_center());
+    glUniform1f(
+      glGetUniformLocation(program_, ("rois[" + std::to_string(i) + "].r1").c_str()),
+      rect.width() / 2.0f);
+    glUniform1f(
+      glGetUniformLocation(program_, ("rois[" + std::to_string(i) + "].r2").c_str()),
+      rect.height() / 2.0f);
+  }
+
   std::vector<NormalizedLandmarkList> empty_multi_face_landmarks;
   const auto& multi_face_landmarks =
       cc->Inputs().Tag(kMultiFaceLandmarksTag).IsEmpty()
@@ -438,7 +462,6 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     const NormalizedLandmark& left_eye_right = landmarks.landmark(243);
     const NormalizedLandmark& left_eye_far_right = landmarks.landmark(244);
     const NormalizedLandmark& left_eye_top = landmarks.landmark(27);
-    const NormalizedLandmark& left_eye_far_top = landmarks.landmark(29);
     const NormalizedLandmark& left_eye_iris_left = landmarks.landmark(474);
     const NormalizedLandmark& left_eye_iris_right = landmarks.landmark(476);
     const NormalizedLandmark& left_eye_iris_top = landmarks.landmark(475);
@@ -464,10 +487,6 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       left_eye_far_right.x(),
       left_eye_far_right.y());
     glUniform2f(
-      glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].farTop").c_str()),
-      left_eye_far_top.x(),
-      left_eye_far_top.y());
-    glUniform2f(
       glGetUniformLocation(program_, ("leftEyes[" + std::to_string(i) + "].irisCenter").c_str()),
       (left_eye_iris_left.x() + left_eye_iris_right.x()) / 2,
       (left_eye_iris_left.y() + left_eye_iris_right.y()) / 2);
@@ -484,7 +503,6 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     const NormalizedLandmark& right_eye_far_left = landmarks.landmark(464);
     const NormalizedLandmark& right_eye_right = landmarks.landmark(359);
     const NormalizedLandmark& right_eye_top = landmarks.landmark(257);
-    const NormalizedLandmark& right_eye_far_top = landmarks.landmark(260);
     const NormalizedLandmark& right_eye_iris_left = landmarks.landmark(469);
     const NormalizedLandmark& right_eye_iris_right = landmarks.landmark(471);
     const NormalizedLandmark& right_eye_iris_top = landmarks.landmark(470);
@@ -509,10 +527,6 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].farFront").c_str()),
       right_eye_far_left.x(),
       right_eye_far_left.y());
-    glUniform2f(
-      glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].farTop").c_str()),
-      right_eye_far_top.x(),
-      right_eye_far_top.y());
     glUniform2f(
       glGetUniformLocation(program_, ("rightEyes[" + std::to_string(i) + "].irisCenter").c_str()),
       (right_eye_iris_left.x() + right_eye_iris_right.x()) / 2,
@@ -567,7 +581,6 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     const NormalizedLandmark& mouth_left = landmarks.landmark(57);
     const NormalizedLandmark& mouth_far_left = landmarks.landmark(207);
     const NormalizedLandmark& mouth_right = landmarks.landmark(287);
-    const NormalizedLandmark& mouth_far_right = landmarks.landmark(427);
     const NormalizedLandmark& mouth_left_tip = landmarks.landmark(92);
     const NormalizedLandmark& mouth_right_tip = landmarks.landmark(322);
 
@@ -591,10 +604,6 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].right").c_str()),
       mouth_right.x(),
       mouth_right.y());
-    glUniform2f(
-      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].farRight").c_str()),
-      mouth_far_right.x(),
-      mouth_far_right.y());
     glUniform2f(
       glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].leftTip").c_str()),
       mouth_left_tip.x(),
@@ -738,6 +747,14 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   in vec2 sample_coordinate;
   uniform sampler2D input_frame;
 
+  struct Roi {
+    vec2 center;
+    float r1;
+    float r2;
+  };
+
+  uniform Roi rois[4];
+
   uniform int faceCount;
   uniform float width;
   uniform float height;
@@ -748,7 +765,6 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     vec2 front;
     vec2 top;
     vec2 farFront;
-    vec2 farTop;
     vec2 irisCenter;
     vec2 irisRight;
     vec2 irisTop;
@@ -770,7 +786,6 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     vec2 left;
     vec2 farLeft;
     vec2 right;
-    vec2 farRight;
     vec2 leftTip;
     vec2 rightTip;
   };
@@ -841,6 +856,14 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
   vec2 rotated(vec2 v, float theta) {
     return vec2(v.x * cos(theta) - v.y * sin(theta), v.x * sin(theta) + v.y * cos(theta));
+  }
+
+  bool isInRoi(vec2 coord, Roi roi) {
+    vec2 wh = vec2(roi.r1, roi.r2);
+    vec2 rcoord = coord - roi.center;
+    vec2 topLeft = -wh;
+    vec2 bottomRight = wh;
+    return rcoord.x >= topLeft.x && rcoord.x <= bottomRight.x && rcoord.y >= topLeft.y && rcoord.y <= bottomRight.y;
   }
 
   float rectIntersectionDist(vec2 center, float r1, float r2, float theta) {
@@ -1603,6 +1626,10 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   void main() {
     vec2 coord = sample_coordinate;
     for (int i = 0; i < faceCount; i++) {
+      if (!isInRoi(coord, rois[i])) {
+        continue;
+      }
+
       Eye leftEye = leftEyes[i];
       Eye rightEye = rightEyes[i];
       coord = applyEyeTransforms(coord, leftEye, true);
@@ -1629,8 +1656,6 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     } else {
       fragColor = out_pix;
     }
-
-    // fragColor.a = 1.0;
   }
   )";
 
