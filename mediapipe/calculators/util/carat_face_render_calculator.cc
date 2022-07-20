@@ -911,8 +911,8 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyEyeSize(vec2 coord, Eye eye, float faceTheta) {
-    float r1 = dist(eye.center, eye.front) * eyeSize;
-    float r2 = dist(eye.center, eye.top) * eyeSize;
+    float r1 = dist(eye.center, eye.front) * 1.3;
+    float r2 = dist(eye.center, eye.top) * 1.3;
 
     if (!isInRotatedEllipse(coord, eye.center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
@@ -1630,6 +1630,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
         continue;
       }
 
+      // todo: 여길 최적화해야한다아
       Eye leftEye = leftEyes[i];
       Eye rightEye = rightEyes[i];
       coord = applyEyeTransforms(coord, leftEye, true);
