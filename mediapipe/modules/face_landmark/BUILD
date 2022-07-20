@@ -50,6 +50,7 @@ mediapipe_simple_subgraph(
         ":face_landmarks_model_loader",
         ":tensors_to_face_landmarks",
         ":tensors_to_face_landmarks_with_attention",
+        "//mediapipe/graphs/face_effect/subgraphs:face_landmarks_smoothing",
         "//mediapipe/calculators/core:gate_calculator",
         "//mediapipe/calculators/core:split_vector_calculator",
         "//mediapipe/calculators/tensor:image_to_tensor_calculator",
