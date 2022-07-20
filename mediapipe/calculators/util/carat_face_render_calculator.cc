@@ -959,8 +959,8 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyEyeHeight(vec2 coord, Eye eye, float faceTheta) {
-    float r1 = dist(eye.center, eye.front) * eyeHeight;
-    float r2 = dist(eye.center, eye.top) * eyeHeight;
+    float r1 = dist(eye.center, eye.front) * 1.2;
+    float r2 = dist(eye.center, eye.top) * 1.2;
 
     if (!isInRotatedEllipse(coord, eye.center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
