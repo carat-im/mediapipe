@@ -1287,12 +1287,12 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
   vec2 applyMouthEndUp(vec2 coord, Mouth mouth, float faceTheta) {
     vec2 center = mouth.leftTip;
-    float r1 = dist(center, mouth.left) * 1.5;
+    float r1 = dist(center, mouth.left) * 1.2;
     float r2 = r1 * 1.5;
 
     if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       center = mouth.rightTip;
-      r1 = dist(center, mouth.right) * 1.5;
+      r1 = dist(center, mouth.right) * 1.2;
       r2 = r1 * 1.5;
     }
 
