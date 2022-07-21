@@ -582,16 +582,13 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       philtrum.x(),
       philtrum.y());
 
-    const NormalizedLandmark& mouth_left = landmarks.landmark(57);
-    const NormalizedLandmark& mouth_far_left = landmarks.landmark(207);
-    const NormalizedLandmark& mouth_right = landmarks.landmark(287);
+    const NormalizedLandmark& mouth_left = landmarks.landmark(61);
+    const NormalizedLandmark& mouth_right = landmarks.landmark(291);
+    const NormalizedLandmark& mouth_top = landmarks.landmark(0);
+    const NormalizedLandmark& mouth_bottom = landmarks.landmark(17);
     const NormalizedLandmark& mouth_left_tip = landmarks.landmark(92);
     const NormalizedLandmark& mouth_right_tip = landmarks.landmark(322);
 
-    glUniform2f(
-      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].center").c_str()),
-      (mouth_left.x() + mouth_right.x()) / 2,
-      (mouth_left.y() + mouth_right.y()) / 2);
     glUniform2f(
       glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].philtrum").c_str()),
       philtrum.x(),
@@ -601,13 +598,17 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
       mouth_left.x(),
       mouth_left.y());
     glUniform2f(
-      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].farLeft").c_str()),
-      mouth_far_left.x(),
-      mouth_far_left.y());
-    glUniform2f(
       glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].right").c_str()),
       mouth_right.x(),
       mouth_right.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].top").c_str()),
+      mouth_top.x(),
+      mouth_top.y());
+    glUniform2f(
+      glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].bottom").c_str()),
+      mouth_bottom.x(),
+      mouth_bottom.y());
     glUniform2f(
       glGetUniformLocation(program_, ("mouthes[" + std::to_string(i) + "].leftTip").c_str()),
       mouth_left_tip.x(),
@@ -786,11 +787,11 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   };
 
   struct Mouth {
-    vec2 center;
     vec2 philtrum;
     vec2 left;
-    vec2 farLeft;
     vec2 right;
+    vec2 top;
+    vec2 bottom;
     vec2 leftTip;
     vec2 rightTip;
   };
@@ -1010,9 +1011,9 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyUnderEyeSize(vec2 coord, Eye eye, bool isLeft, float faceTheta) {
-    vec2 center = eye.back * 0.7 + eye.center * 0.3;
-    float r1 = dist(center, eye.center) * underEyeSize;
-    float r2 = dist(center, eye.top) * underEyeSize;
+    vec2 center = eye.back * 0.5 + eye.center * 0.5;
+    float r1 = dist(center, eye.center) * 1.4;
+    float r2 = dist(center, eye.top) * 1.4;
 
     vec2 rcoord = rotated(coord - center, -faceTheta);
 
@@ -1072,14 +1073,14 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
 
   vec2 applyNoseHeight(vec2 coord, Nose nose, float faceTheta) {
     vec2 center = (nose.left + nose.right) / 2.0;
-    vec2 lowestCenterRcoord = rotated(nose.lowestCenter - center, -faceTheta);
-    vec2 delta = rotated(vec2(0.0, lowestCenterRcoord.y), faceTheta);
+    vec2 centerOfPhiltrumHighCenter = rotated((nose.philtrum + nose.highCenter) / 2.0 - center, -faceTheta);
+    vec2 delta = rotated(vec2(0.0, centerOfPhiltrumHighCenter.y), faceTheta);
     center = center + delta;
 
     float r1 = dist(center, nose.left); 
     float r2 = dist(center, nose.philtrum);
     float biggerR1 = r1 * 1.8;
-    float biggerR2 = dist(center, nose.highestCenter);
+    float biggerR2 = r2 * 1.2;
 
     if (!isInRotatedEllipse(coord, center, biggerR1, biggerR2, faceTheta)) {
       return vec2(0.0, 0.0);
@@ -1227,21 +1228,27 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyPhiltrumHeight(vec2 coord, Mouth mouth, float faceTheta) {
-    float r1 = dist(mouth.center, mouth.left);
-    float r2 = dist(mouth.center, mouth.philtrum) / 1.5;
-    float biggerR1 = dist(mouth.center, mouth.farLeft);
-    float biggerR2 = r2 * 1.5;
+    vec2 center = (mouth.left + mouth.right) / 2.0;
+    vec2 centerOfTopBottomRcoord = rotated((mouth.top + mouth.bottom) / 2.0 - center, -faceTheta);
+    vec2 delta = rotated(vec2(0.0, centerOfTopBottomRcoord.y), faceTheta);
+    center = center + delta;
 
-    if (!isInRotatedEllipse(coord, mouth.center, biggerR1, biggerR2, faceTheta)) {
+    float topToPhiltrum = dist(mouth.top, mouth.philtrum);
+    float r1 = dist(center, mouth.left) * 1.2;
+    float r2 = dist(center, mouth.bottom) + topToPhiltrum * 0.7;
+    float biggerR1 = r1 * 1.5;
+    float biggerR2 = r2 + topToPhiltrum * 0.3;
+
+    if (!isInRotatedEllipse(coord, center, biggerR1, biggerR2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
     float maxMoveDist = (1.0 - philtrumHeight) * r2;
 
-    if (isInRotatedEllipse(coord, mouth.center, r1, r2, faceTheta)) {
+    if (isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       return rotated(vec2(0.0, maxMoveDist), faceTheta);
     } else {
-      vec2 rcoord = rotated(coord - mouth.center, -faceTheta);
+      vec2 rcoord = rotated(coord - center, -faceTheta);
       float theta = atan(rcoord.y, rcoord.x);
 
       float smallCircleDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
@@ -1253,14 +1260,18 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   }
 
   vec2 applyMouthSize(vec2 coord, Mouth mouth, float faceTheta) {
-    float r1 = dist(mouth.center, mouth.left) * max(1.0, lipSize);
-    float r2 = dist(mouth.center, mouth.philtrum) * max(1.0, lipSize);
+    vec2 center = (mouth.left + mouth.right) / 2.0;
+    vec2 centerOfTopBottomRcoord = rotated((mouth.top + mouth.bottom) / 2.0 - center, -faceTheta);
+    vec2 delta = rotated(vec2(0.0, centerOfTopBottomRcoord.y), faceTheta);
+    center = center + delta;
 
-    if (!isInRotatedEllipse(coord, mouth.center, r1, r2, faceTheta)) {
+    float r1 = dist(center, mouth.left) * 1.5;
+    float r2 = dist(center, mouth.bottom) * 1.5;
+    if (!isInRotatedEllipse(coord, center, r1, r2, faceTheta)) {
       return vec2(0.0, 0.0);
     }
 
-    vec2 rcoord = rotated(coord - mouth.center, -faceTheta);
+    vec2 rcoord = rotated(coord - center, -faceTheta);
     float theta = atan(rcoord.y, rcoord.x);
 
     float totalDist = (r1 * r2) / sqrt(pow(r1, 2.0) * pow(sin(theta), 2.0) + pow(r2, 2.0) * pow(cos(theta), 2.0));
