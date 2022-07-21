@@ -429,7 +429,6 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     glUniform1f(glGetUniformLocation(program_, "philtrumHeight"), *cc->InputSidePackets().Tag(kPhiltrumHeightTag).Get<std::unique_ptr<float>>());
     glUniform1f(glGetUniformLocation(program_, "lipSize"), *cc->InputSidePackets().Tag(kLipSizeTag).Get<std::unique_ptr<float>>());
     glUniform1f(glGetUniformLocation(program_, "lipEndUp"), *cc->InputSidePackets().Tag(kLipEndUpTag).Get<std::unique_ptr<float>>());
-    glUniform1f(glGetUniformLocation(program_, "skinSmooth"), *cc->InputSidePackets().Tag(kSkinSmoothTag).Get<std::unique_ptr<float>>());
   #else
     glUniform1f(glGetUniformLocation(program_, "foreheadSize"), (cc->InputSidePackets().Tag(kForeheadSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
     glUniform1f(glGetUniformLocation(program_, "cheekboneSize"), (cc->InputSidePackets().Tag(kCheekboneSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
@@ -451,7 +450,6 @@ absl::Status CaratFaceRenderCalculator::GlRender(CalculatorContext* cc) {
     glUniform1f(glGetUniformLocation(program_, "philtrumHeight"), (cc->InputSidePackets().Tag(kPhiltrumHeightTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
     glUniform1f(glGetUniformLocation(program_, "lipSize"), (cc->InputSidePackets().Tag(kLipSizeTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
     glUniform1f(glGetUniformLocation(program_, "lipEndUp"), (cc->InputSidePackets().Tag(kLipEndUpTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
-    glUniform1f(glGetUniformLocation(program_, "skinSmooth"), (cc->InputSidePackets().Tag(kSkinSmoothTag).Get<std::unique_ptr<SyncedPacket>>()->Get()).Get<float>());
   #endif
 
 
@@ -746,8 +744,6 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   #endif  // GL_ES
 
   #define PI 3.1415926535897932384626433832795
-  #define INV_SQRT_OF_2PI 0.39894228040143267793994605993439  // 1.0/SQRT_OF_2PI
-  #define INV_PI 0.31830988618379067153776752674503
 
   in vec2 sample_coordinate;
   uniform sampler2D input_frame;
@@ -840,7 +836,6 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
   uniform float philtrumHeight;
   uniform float lipSize;
   uniform float lipEndUp;
-  uniform float skinSmooth;
 
   bool isInEllipse(vec2 coord, vec2 center, float r1, float r2) {
     return pow(coord.x - center.x, 2.0) / pow(r1, 2.0) +
@@ -1505,136 +1500,6 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     return ret;
   }
 
-  vec4 smartDeNoise(sampler2D tex, vec2 uv, float sigma, float kSigma, float threshold)
-  {
-      float radius = floor(kSigma*sigma + 0.5);
-      float radQ = radius * radius;
-
-      float invSigmaQx2 = .5 / (sigma * sigma);      // 1.0 / (sigma^2 * 2.0)
-      float invSigmaQx2PI = INV_PI * invSigmaQx2;    // 1/(2 * PI * sigma^2)
-
-      float invThresholdSqx2 = .5 / (threshold * threshold);     // 1.0 / (sigma^2 * 2.0)
-      float invThresholdSqrt2PI = INV_SQRT_OF_2PI / threshold;   // 1.0 / (sqrt(2*PI) * sigma^2)
-
-      vec4 centrPx = texture2D(tex,uv); 
-
-      float zBuff = 0.0;
-      vec4 aBuff = vec4(0.0);
-      vec2 size = vec2(width, height);
-
-      vec2 d;
-      for (d.x=-radius; d.x <= radius; d.x++) {
-          float pt = sqrt(radQ-d.x*d.x);       // pt = yRadius: have circular trend
-          for (d.y=-pt; d.y <= pt; d.y++) {
-              float blurFactor = exp( -dot(d , d) * invSigmaQx2 ) * invSigmaQx2PI;
-
-              vec4 walkPx =  texture2D(tex,uv+d/size);
-              vec4 dC = walkPx-centrPx;
-              float deltaFactor = exp( -dot(dC, dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
-
-              zBuff += deltaFactor;
-              aBuff += deltaFactor*walkPx;
-          }
-      }
-      return aBuff/zBuff;
-  }
-
-  float normpdf(float x, float sigma)
-  {
-      return 0.39894*exp(-0.5*x*x/(sigma*sigma))/sigma;
-  }
-
-  float normpdf3(vec3 v, float sigma)
-  {
-      return 0.39894*exp(-0.5*dot(v,v)/(sigma*sigma))/sigma;
-  }
-
-  vec3 bilateralFilter(sampler2D tex, vec2 uv) {
-    const float kSize = 7.0;
-    float kernel[15];
-    kernel[0] = 0.031225216;
-    kernel[1] = 0.033322271;
-    kernel[2] = 0.035206333;
-    kernel[3] = 0.036826804;
-    kernel[4] = 0.038138565;
-    kernel[5] = 0.039104044;
-    kernel[6] = 0.039695028;
-    kernel[7] = 0.039894000;
-    kernel[8] = 0.039695028;
-    kernel[9] = 0.039104044;
-    kernel[10] = 0.038138565;
-    kernel[11] = 0.036826804;
-    kernel[12] = 0.035206333;
-    kernel[13] = 0.033322271;
-    kernel[14] = 0.031225216;
-
-    vec3 c = texture2D(tex, uv).rgb; 
-    vec3 cc;
-    float factor;
-    float bZ = 1.0 / normpdf(0.0, skinSmooth);
-    vec2 size = vec2(width, height);
-    vec2 d;
-    vec3 final_colour = vec3(0.0);
-    float Z = 0.0;
-    for (d.x = -kSize; d.x <= kSize; d.x++) {
-      for (d.y = -kSize; d.y <= kSize; d.y++) {
-        cc = texture2D(tex, uv + d / size).rgb;
-        factor = normpdf3(cc - c, skinSmooth) * bZ * kernel[int(kSize + d.y)] * kernel[int(kSize + d.x)];
-        Z += factor;
-        final_colour = final_colour + factor * cc;
-      }
-    }
-
-    return final_colour / Z;
-  }
-
-  vec4 overlay(vec4 a, vec4 b) {
-    vec4 x = vec4(2.0) * a * b;
-    vec4 y = vec4(1.0) - vec4(2.0) * (vec4(1.0)-a) * (vec4(1.0)-b);
-    vec4 result;
-    result.r = mix(x.r, y.r, float(a.r > 0.5));
-    result.g = mix(x.g, y.g, float(a.g > 0.5));
-    result.b = mix(x.b, y.b, float(a.b > 0.5));
-    result.a = mix(x.a, y.a, float(a.a > 0.5));
-    return result;
-  }
-
-  vec3 rgb2lab(vec3 rgb) {
-    float r = rgb.r;
-    float g = rgb.g;
-    float b = rgb.b;
-    float x = 0.0;
-    float y = 0.0;
-    float z = 0.0;
-
-    r = (r > 0.04045) ? pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
-    g = (g > 0.04045) ? pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
-    b = (b > 0.04045) ? pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
-
-    x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
-    y = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 1.00000;
-    z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
-
-    x = (x > 0.008856) ? pow(x, 1.0/3.0) : (7.787 * x) + 16.0/116.0;
-    y = (y > 0.008856) ? pow(y, 1.0/3.0) : (7.787 * y) + 16.0/116.0;
-    z = (z > 0.008856) ? pow(z, 1.0/3.0) : (7.787 * z) + 16.0/116.0;
-
-    vec3 res = vec3((116.0 * y) - 16.0, 500.0 * (x - y), 200.0 * (y - z));
-    res.x = res.x / 100.0;
-    res.y = (res.y + 110.0) / 220.0;
-    res.z = (res.z + 110.0) / 220.0;
-    return res;
-  }
-
-  float skin_mask(vec3 color) {
-    vec3 lab = rgb2lab(color); // return values in the range [0, 1]
-    float a = smoothstep(0.45, 0.55, lab.g);
-    float b = smoothstep(0.46, 0.54, lab.b);
-    float c = 1.0 - smoothstep(0.9, 1.0, length(lab.gb));
-    float d = 1.0 - smoothstep(0.98, 1.02, lab.r);
-    return min(min(min(a, b), c), d);
-  }
-
   void main() {
     vec2 coord = sample_coordinate;
     for (int i = 0; i < faceCount; i++) {
@@ -1657,16 +1522,7 @@ absl::Status CaratFaceRenderCalculator::GlSetup(CalculatorContext* cc) {
     }
 
     vec4 out_pix = texture2D(input_frame, coord);
-
-    if (skinSmooth > 0.0) {
-      vec3 blurred = bilateralFilter(input_frame, coord);
-      vec3 highpass = out_pix.rgb - blurred + vec3(0.5, 0.5, 0.5);
-      vec4 smoothed = overlay(out_pix, vec4(1.0 - highpass.r, 1.0 - highpass.g, 1.0 - highpass.b, 1.0));
-      float factor = skin_mask(out_pix.rgb);
-      fragColor = (1.0 - factor) * out_pix + factor * smoothed;
-    } else {
-      fragColor = out_pix;
-    }
+    fragColor = out_pix;
   }
   )";
 
