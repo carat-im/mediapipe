@@ -85,8 +85,6 @@ static const int kSelectedEffectIdFacepaint = 2;
     mediapipe::Packet selectedEffectIdPacket =
         mediapipe::MakePacket<int>(kSelectedEffectIdFacepaint).At(graphTimestamp);
 
-    NSLog(@"graph timestamp: %d", graphTimestamp.Value());
-
     [self.mediapipeGraph sendPixelBuffer:pixelBuffer intoStream:kInputStream packetType:MPPPacketTypePixelBuffer timestamp:graphTimestamp];
 
     [self.mediapipeGraph movePacket:std::move(selectedEffectIdPacket) intoStream:kSelectedEffectIdInputStream error:nil];
