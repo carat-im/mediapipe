@@ -1,0 +1,139 @@
+# GpuBuffer
+input_stream: "input_video"
+
+# int
+input_stream: "selected_effect_id"
+
+# int
+input_side_packet: "num_faces"
+
+# GpuBuffer
+output_stream: "output_video"
+
+# std::vector<NormalizedLandmarkList>
+output_stream: "multi_face_landmarks"
+
+# std::vector<face_geometry::FaceGeometry>
+output_stream: "multi_face_geometry"
+
+node {
+  calculator: "FlowLimiterCalculator"
+  input_stream: "input_video"
+  input_stream: "FINISHED:output_video"
+  input_stream_info: {
+    tag_index: "FINISHED"
+    back_edge: true
+  }
+  output_stream: "throttled_input_video"
+}
+
+node {
+  calculator: "ConstantSidePacketCalculator"
+  output_side_packet: "PACKET:with_attention"
+  node_options: {
+    [type.googleapis.com/mediapipe.ConstantSidePacketCalculatorOptions]: {
+      packet { bool_value: true }
+    }
+  }
+}
+
+node {
+  calculator: "FaceGeometryEnvGeneratorCalculator"
+  output_side_packet: "ENVIRONMENT:environment"
+  node_options: {
+    [type.googleapis.com/mediapipe.FaceGeometryEnvGeneratorCalculatorOptions] {
+      environment: {
+        origin_point_location: TOP_LEFT_CORNER
+        perspective_camera: {
+          vertical_fov_degrees: 63.0  # 63 degrees
+          near: 1.0  # 1cm
+          far: 10000.0  # 100m
+        }
+      }
+    }
+  }
+}
+
+node {
+  calculator: "ImagePropertiesCalculator"
+  input_stream: "IMAGE_GPU:throttled_input_video"
+  output_stream: "SIZE:image_size"
+}
+
+node {
+  calculator: "FaceLandmarkFrontGpu"
+  input_stream: "IMAGE:throttled_input_video"
+  input_side_packet: "NUM_FACES:num_faces"
+  input_side_packet: "WITH_ATTENTION:with_attention"
+  output_stream: "LANDMARKS:multi_face_landmarks"
+  output_stream: "DETECTIONS:face_detections"
+  output_stream: "ROIS_FROM_LANDMARKS:face_rects_from_landmarks"
+  output_stream: "ROIS_FROM_DETECTIONS:face_rects_from_detections"
+}
+
+node {
+  calculator: "FaceGeometryFromLandmarks"
+  input_stream: "MULTI_FACE_LANDMARKS:multi_face_landmarks"
+  input_stream: "IMAGE_SIZE:image_size"
+  input_side_packet: "ENVIRONMENT:environment"
+  output_stream: "MULTI_FACE_GEOMETRY:multi_face_geometry"
+}
+
+node {
+  calculator: "SwitchContainer"
+  input_stream: "SELECT:selected_effect_id"
+  input_stream: "IMAGE_GPU:throttled_input_video"
+  input_stream: "MULTI_FACE_GEOMETRY:multi_face_geometry"
+  input_side_packet: "ENVIRONMENT:environment"
+  output_stream: "IMAGE_GPU:face_effect_output_video"
+  node_options: {
+    [type.googleapis.com/mediapipe.SwitchContainerOptions] {
+      contained_node: {
+        calculator: "FaceGeometryEffectRendererCalculator"
+        node_options: {
+          [type.googleapis.com/mediapipe.FaceGeometryEffectRendererCalculatorOptions] {
+            effect_texture_path: "mediapipe/graphs/face_effect/data/axis.pngblob"
+            effect_mesh_3d_path: "mediapipe/graphs/face_effect/data/axis.binarypb"
+          }
+        }
+      }
+      contained_node: {
+        calculator: "FaceGeometryEffectRendererCalculator"
+        node_options: {
+          [type.googleapis.com/mediapipe.FaceGeometryEffectRendererCalculatorOptions] {
+            effect_texture_path: "mediapipe/graphs/face_effect/data/facepaint.pngblob"
+          }
+        }
+      }
+      contained_node: {
+        calculator: "FaceGeometryEffectRendererCalculator"
+        node_options: {
+          [type.googleapis.com/mediapipe.FaceGeometryEffectRendererCalculatorOptions] {
+            effect_texture_path: "mediapipe/graphs/face_effect/data/glasses.pngblob"
+            effect_mesh_3d_path: "mediapipe/graphs/face_effect/data/glasses.binarypb"
+          }
+        }
+      }
+    }
+  }
+}
+
+node {
+  calculator: "RectToRenderDataCalculator"
+  input_stream: "NORM_RECTS:face_rects_from_landmarks"
+  output_stream: "RENDER_DATA:rects_render_data"
+  node_options: {
+    [type.googleapis.com/mediapipe.RectToRenderDataCalculatorOptions] {
+      filled: false
+      color { r: 255 g: 0 b: 0 }
+      thickness: 4.0
+    }
+  }
+}
+
+node {
+  calculator: "AnnotationOverlayCalculator"
+  input_stream: "IMAGE_GPU:face_effect_output_video"
+  input_stream: "rects_render_data"
+  output_stream: "IMAGE_GPU:output_video"
+}

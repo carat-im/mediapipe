@@ -3,13 +3,20 @@
 
 #include "mediapipe/framework/formats/landmark.pb.h"
 
-static NSString* const kGraphName = @"face_mesh_mobile_gpu";
+static NSString* const kGraphName = @"carat_mediapipe_graph";
+
 static const char* kInputStream = "input_video";
 static const char* kOutputStream = "output_video";
+
 static const char* kNumFacesInputSidePacket = "num_faces";
+static const char* kSelectedEffectIdInputStream = "selected_effect_id";
+
 static const char* kLandmarksOutputStream = "multi_face_landmarks";
+static const char* kMultiFaceGeometryStream = "multi_face_geometry";
 
 static const int kNumFaces = 4;
+
+static const int kSelectedEffectIdFacepaint = 2;
 
 @interface CaratMediapipeGraph() <MPPGraphDelegate>
 @property(nonatomic) MPPGraph* mediapipeGraph;
@@ -56,6 +63,7 @@ static const int kNumFaces = 4;
 
         [self.mediapipeGraph addFrameOutputStream:kOutputStream outputPacketType:MPPPacketTypePixelBuffer];
         [self.mediapipeGraph addFrameOutputStream:kLandmarksOutputStream outputPacketType:MPPPacketTypeRaw];
+        [self.mediapipeGraph addFrameOutputStream:kMultiFaceGeometryStream outputPacketType:MPPPacketTypeRaw];
         [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<int>(kNumFaces)) named:kNumFacesInputSidePacket];
     }
     return self;
@@ -70,8 +78,18 @@ static const int kNumFaces = 4;
     }
 }
 
-- (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer {
-    [self.mediapipeGraph sendPixelBuffer:pixelBuffer intoStream:kInputStream packetType:MPPPacketTypePixelBuffer];
+- (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer timestamp:(CMTime)timestamp {
+    mediapipe::Timestamp graphTimestamp(static_cast<mediapipe::TimestampBaseType>(
+        mediapipe::Timestamp::kTimestampUnitsPerSecond * CMTimeGetSeconds(timestamp)));
+
+    mediapipe::Packet selectedEffectIdPacket =
+        mediapipe::MakePacket<int>(kSelectedEffectIdFacepaint).At(graphTimestamp);
+
+    NSLog(@"graph timestamp: %d", graphTimestamp.Value());
+
+    [self.mediapipeGraph sendPixelBuffer:pixelBuffer intoStream:kInputStream packetType:MPPPacketTypePixelBuffer timestamp:graphTimestamp];
+
+    [self.mediapipeGraph movePacket:std::move(selectedEffectIdPacket) intoStream:kSelectedEffectIdInputStream error:nil];
 }
 
 #pragma mark - MPPGraphDelegate methods
@@ -86,6 +104,8 @@ static const int kNumFaces = 4;
 // Invoked on a Mediapipe worker thread.
 - (void)mediapipeGraph:(MPPGraph*)graph didOutputPacket:(const ::mediapipe::Packet&)packet fromStream:(const std::string&)streamName {
     if (streamName == kLandmarksOutputStream) {
+        // something.
+    } else if (streamName == kMultiFaceGeometryStream) {
         // something.
     }
 }

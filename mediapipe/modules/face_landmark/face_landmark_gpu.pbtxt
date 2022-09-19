@@ -181,5 +181,21 @@ node {
   calculator: "LandmarkProjectionCalculator"
   input_stream: "NORM_LANDMARKS:landmarks"
   input_stream: "NORM_RECT:roi"
-  output_stream: "NORM_LANDMARKS:face_landmarks"
+  output_stream: "NORM_LANDMARKS:projected_face_landmarks"
+}
+
+# Extracts the input image frame dimensions as a separate packet.
+node {
+  calculator: "ImagePropertiesCalculator"
+  input_stream: "IMAGE_GPU:image"
+  output_stream: "SIZE:input_image_size"
+}
+
+# Applies smoothing to the face landmarks previously extracted from the face
+# detection keypoints.
+node {
+  calculator: "FaceLandmarksSmoothing"
+  input_stream: "NORM_LANDMARKS:projected_face_landmarks"
+  input_stream: "IMAGE_SIZE:input_image_size"
+  output_stream: "NORM_FILTERED_LANDMARKS:face_landmarks"
 }

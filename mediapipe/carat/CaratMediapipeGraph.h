@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <CoreVideo/CoreVideo.h>
+#import <CoreMedia/CoreMedia.h>
 
 @class CaratMediapipeGraph;
 
@@ -10,6 +11,6 @@
 @interface CaratMediapipeGraph: NSObject
 - (instancetype)init;
 - (void)startGraph;
-- (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer;
+- (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer timestamp:(CMTime)timestamp;
 @property(weak, nonatomic) id <CaratMediapipeGraphDelegate> delegate;
 @end
