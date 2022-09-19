@@ -34,6 +34,15 @@
 
 namespace mediapipe {
 namespace {
+    
+// Assigns the value from a StatusOr if avialable.
+#define ASSIGN_IF_OK(lhs, rexpr) \
+  {                              \
+    auto statusor = (rexpr);     \
+    if (statusor.ok()) {         \
+      lhs = statusor.value();    \
+    }                            \
+  }
 
 static constexpr char kEnvironmentTag[] = "ENVIRONMENT";
 static constexpr char kImageSizeTag[] = "IMAGE_SIZE";
@@ -136,13 +145,12 @@ class GeometryPipelineCalculator : public CalculatorBase {
     auto multi_face_geometry =
         absl::make_unique<std::vector<face_geometry::FaceGeometry>>();
 
-    ASSIGN_OR_RETURN(
+    ASSIGN_IF_OK(
         *multi_face_geometry,
         geometry_pipeline_->EstimateFaceGeometry(
             multi_face_landmarks,  //
             /*frame_width*/ image_size.first,
-            /*frame_height*/ image_size.second),
-        _ << "Failed to estimate face geometry for multiple faces!");
+            /*frame_height*/ image_size.second));
 
     cc->Outputs()
         .Tag(kMultiFaceGeometryTag)
