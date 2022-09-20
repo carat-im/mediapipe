@@ -98,8 +98,8 @@ node {
         calculator: "FaceGeometryEffectRendererCalculator"
         node_options: {
           [type.googleapis.com/mediapipe.FaceGeometryEffectRendererCalculatorOptions] {
-            effect_texture_path: "mediapipe/graphs/face_effect/data/glasses.pngblob"
-            effect_mesh_3d_path: "mediapipe/graphs/face_effect/data/glasses.binarypb"
+            effect_texture_path: "mediapipe/graphs/face_effect/data/dino.pngblob"
+            effect_mesh_3d_path: "mediapipe/graphs/face_effect/data/dino.binarypb"
           }
         }
       }

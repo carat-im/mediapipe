@@ -14,7 +14,7 @@ static const char* kSelectedEffectIdInputStream = "selected_effect_id";
 static const char* kLandmarksOutputStream = "multi_face_landmarks";
 static const char* kMultiFaceGeometryStream = "multi_face_geometry";
 
-static const int kNumFaces = 4;
+static const int kNumFaces = 5;
 
 static const int kSelectedEffectIdFacepaint = 2;
 
