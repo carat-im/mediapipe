@@ -69,7 +69,10 @@ objc_library(
             "//mediapipe/graphs/face_effect:face_effect_gpu_deps",
             "//mediapipe/framework/formats:landmark_cc_proto",
             "//mediapipe/framework/formats:matrix_data_cc_proto",
+            "//mediapipe/framework/port:parse_text_proto",
+            "//mediapipe/carat/formats:carat_face_effect_cc_proto",
             "//mediapipe/modules/face_geometry/protos:face_geometry_cc_proto",
+            "//mediapipe/carat/calculators:carat_face_effect_renderer_calculator",
         ],
     }),
 )
@@ -79,7 +82,6 @@ mediapipe_binary_graph(
     graph = "carat_mediapipe_graph.pbtxt",
     output_name = "carat_mediapipe_graph.binarypb",
     deps = [
-        "//mediapipe/framework/tool:switch_container",
         "//mediapipe/calculators/core:flow_limiter_calculator",
         "//mediapipe/calculators/core:gate_calculator",
         "//mediapipe/calculators/core:immediate_mux_calculator",
@@ -87,7 +89,7 @@ mediapipe_binary_graph(
         "//mediapipe/calculators/image:image_properties_calculator",
         "//mediapipe/calculators/util:annotation_overlay_calculator",
         "//mediapipe/calculators/util:rect_to_render_data_calculator",
-        "//mediapipe/modules/face_geometry:effect_renderer_calculator",
+        "//mediapipe/carat/calculators:carat_face_effect_renderer_calculator",
         "//mediapipe/modules/face_geometry:env_generator_calculator",
         "//mediapipe/modules/face_geometry:face_geometry_from_landmarks",
         "//mediapipe/modules/face_landmark:face_landmark_front_gpu",

@@ -1,8 +1,8 @@
 # GpuBuffer
 input_stream: "input_video"
 
-# int
-input_stream: "selected_effect_id"
+# CaratFaceEffectSet
+input_stream: "carat_face_effect_set"
 
 # int
 input_side_packet: "num_faces"
@@ -69,42 +69,12 @@ node {
 }
 
 node {
-  calculator: "SwitchContainer"
-  input_stream: "SELECT:selected_effect_id"
+  calculator: "CaratFaceEffectRendererCalculator"
   input_stream: "IMAGE_GPU:throttled_input_video"
   input_stream: "MULTI_FACE_GEOMETRY:multi_face_geometry"
+  input_stream: "CARAT_FACE_EFFECT_SET:carat_face_effect_set"
   input_side_packet: "ENVIRONMENT:environment"
   output_stream: "IMAGE_GPU:face_effect_output_video"
-  node_options: {
-    [type.googleapis.com/mediapipe.SwitchContainerOptions] {
-      contained_node: {
-        calculator: "FaceGeometryEffectRendererCalculator"
-        node_options: {
-          [type.googleapis.com/mediapipe.FaceGeometryEffectRendererCalculatorOptions] {
-            effect_texture_path: "mediapipe/graphs/face_effect/data/axis.pngblob"
-            effect_mesh_3d_path: "mediapipe/graphs/face_effect/data/axis.binarypb"
-          }
-        }
-      }
-      contained_node: {
-        calculator: "FaceGeometryEffectRendererCalculator"
-        node_options: {
-          [type.googleapis.com/mediapipe.FaceGeometryEffectRendererCalculatorOptions] {
-            effect_texture_path: "mediapipe/graphs/face_effect/data/facepaint.pngblob"
-          }
-        }
-      }
-      contained_node: {
-        calculator: "FaceGeometryEffectRendererCalculator"
-        node_options: {
-          [type.googleapis.com/mediapipe.FaceGeometryEffectRendererCalculatorOptions] {
-            effect_texture_path: "mediapipe/carat/data/microphone.pngblob"
-            effect_mesh_3d_path: "mediapipe/carat/data/microphone.binarypb"
-          }
-        }
-      }
-    }
-  }
 }
 
 node {

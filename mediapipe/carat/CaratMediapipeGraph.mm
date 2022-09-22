@@ -2,6 +2,8 @@
 #import "mediapipe/objc/MPPGraph.h"
 
 #include "mediapipe/framework/formats/landmark.pb.h"
+#include "mediapipe/carat/formats/carat_face_effect.pb.h"
+#include "mediapipe/framework/port/parse_text_proto.h"
 
 static NSString* const kGraphName = @"carat_mediapipe_graph";
 
@@ -9,7 +11,7 @@ static const char* kInputStream = "input_video";
 static const char* kOutputStream = "output_video";
 
 static const char* kNumFacesInputSidePacket = "num_faces";
-static const char* kSelectedEffectIdInputStream = "selected_effect_id";
+static const char* kCaratFaceEffectSetInputStream = "carat_face_effect_set";
 
 static const char* kLandmarksOutputStream = "multi_face_landmarks";
 static const char* kMultiFaceGeometryStream = "multi_face_geometry";
@@ -82,12 +84,12 @@ static const int kSelectedEffectIdFacepaint = 2;
     mediapipe::Timestamp graphTimestamp(static_cast<mediapipe::TimestampBaseType>(
         mediapipe::Timestamp::kTimestampUnitsPerSecond * CMTimeGetSeconds(timestamp)));
 
-    mediapipe::Packet selectedEffectIdPacket =
-        mediapipe::MakePacket<int>(kSelectedEffectIdFacepaint).At(graphTimestamp);
-
     [self.mediapipeGraph sendPixelBuffer:pixelBuffer intoStream:kInputStream packetType:MPPPacketTypePixelBuffer timestamp:graphTimestamp];
 
-    [self.mediapipeGraph movePacket:std::move(selectedEffectIdPacket) intoStream:kSelectedEffectIdInputStream error:nil];
+    const mediapipe::CaratFaceEffectSet& caratFaceEffectSet = mediapipe::ParseTextProtoOrDie<mediapipe::CaratFaceEffectSet>("");
+    mediapipe::Packet caratFaceEffectSetPacket =
+        mediapipe::MakePacket<mediapipe::CaratFaceEffectSet>(caratFaceEffectSet).At(graphTimestamp);
+    [self.mediapipeGraph movePacket:std::move(caratFaceEffectSetPacket) intoStream:kCaratFaceEffectSetInputStream error:nil];
 }
 
 #pragma mark - MPPGraphDelegate methods

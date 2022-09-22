@@ -6,3 +6,5 @@ mediapipe/provisioning_profile.mobileprovision
 .user.bazelrc
 
 **/CaratMediapipeGraph.framework/
+
+.vscode/
