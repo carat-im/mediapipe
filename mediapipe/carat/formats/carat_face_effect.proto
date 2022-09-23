@@ -6,11 +6,15 @@ option java_package = "com.google.mediapipe.formats.proto";
 option java_outer_classname = "CaratFaceEffectProto";
 
 message CaratFaceEffect {
-    optional string texture_path = 1;
-    optional string mesh_3d_path = 2;
+    optional int64 id = 1;
+    optional string texture_path = 2;
+    optional string mesh_3d_path = 3;
 }
 
-message CaratFaceEffectSet {
-    optional int64 id = 1;
-    repeated CaratFaceEffect caratFaceEffect = 2;
+message CaratFaceEffectList {
+    repeated CaratFaceEffect effect = 1;
+}
+
+message CaratFaceEffectListCollection {
+  repeated CaratFaceEffectList effect_list = 1;
 }

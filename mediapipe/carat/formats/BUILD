@@ -19,8 +19,10 @@ mediapipe_register_type(
     include_headers = ["mediapipe/carat/formats/carat_face_effect.pb.h"],
     types = [
         "::mediapipe::CaratFaceEffect",
-        "::mediapipe::CaratFaceEffectSet",
+        "::mediapipe::CaratFaceEffectList",
+        "::mediapipe::CaratFaceEffectListCollection",
         "::std::vector<::mediapipe::CaratFaceEffect>",
+        "::std::vector<::mediapipe::CaratFaceEffectList>",
     ],
     deps = [":carat_face_effect_cc_proto"],
 )

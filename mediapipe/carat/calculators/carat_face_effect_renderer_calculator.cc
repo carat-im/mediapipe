@@ -43,7 +43,7 @@ namespace {
 static constexpr char kEnvironmentTag[] = "ENVIRONMENT";
 static constexpr char kImageGpuTag[] = "IMAGE_GPU";
 static constexpr char kMultiFaceGeometryTag[] = "MULTI_FACE_GEOMETRY";
-static constexpr char kCaratFaceEffectSetTag[] = "CARAT_FACE_EFFECT_SET";
+static constexpr char kCaratFaceEffectListTag[] = "CARAT_FACE_EFFECT_LIST";
 
 class EffectRendererCalculator : public CalculatorBase {
  public:
@@ -59,7 +59,7 @@ class EffectRendererCalculator : public CalculatorBase {
     cc->Inputs()
         .Tag(kMultiFaceGeometryTag)
         .Set<std::vector<face_geometry::FaceGeometry>>();
-    cc->Inputs().Tag(kCaratFaceEffectSetTag).Set<CaratFaceEffectSet>();
+    cc->Inputs().Tag(kCaratFaceEffectListTag).Set<CaratFaceEffectList>();
     
     cc->Outputs().Tag(kImageGpuTag).Set<GpuBuffer>();
 
@@ -120,9 +120,10 @@ class EffectRendererCalculator : public CalculatorBase {
       GlTexture input_gl_texture =
           gpu_helper_.CreateSourceTexture(input_gpu_buffer);
 
-      auto& a = cc->Inputs().Tag(kCaratFaceEffectSetTag);
-      // 조건 손봐야함
-      if (!a.Value().IsEmpty()) {
+      const CaratFaceEffectList& got = cc->Inputs().Tag(kCaratFaceEffectListTag).Get<CaratFaceEffectList>();
+      LOG(WARNING) << "size: " << std::to_string(got.effect_size());
+      LOG(WARNING) << "texture_path: " << got.effect(0).texture_path();
+      if (got.effect_size() >= 0) {
         std::unique_ptr<GpuBuffer> output_gpu_buffer =
             input_gl_texture.GetFrame<GpuBuffer>();
 

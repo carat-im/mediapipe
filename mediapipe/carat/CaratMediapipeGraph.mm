@@ -11,7 +11,7 @@ static const char* kInputStream = "input_video";
 static const char* kOutputStream = "output_video";
 
 static const char* kNumFacesInputSidePacket = "num_faces";
-static const char* kCaratFaceEffectSetInputStream = "carat_face_effect_set";
+static const char* kCaratFaceEffectListInputStream = "carat_face_effect_list";
 
 static const char* kLandmarksOutputStream = "multi_face_landmarks";
 static const char* kMultiFaceGeometryStream = "multi_face_geometry";
@@ -86,10 +86,12 @@ static const int kSelectedEffectIdFacepaint = 2;
 
     [self.mediapipeGraph sendPixelBuffer:pixelBuffer intoStream:kInputStream packetType:MPPPacketTypePixelBuffer timestamp:graphTimestamp];
 
-    const mediapipe::CaratFaceEffectSet& caratFaceEffectSet = mediapipe::ParseTextProtoOrDie<mediapipe::CaratFaceEffectSet>("");
-    mediapipe::Packet caratFaceEffectSetPacket =
-        mediapipe::MakePacket<mediapipe::CaratFaceEffectSet>(caratFaceEffectSet).At(graphTimestamp);
-    [self.mediapipeGraph movePacket:std::move(caratFaceEffectSetPacket) intoStream:kCaratFaceEffectSetInputStream error:nil];
+    const mediapipe::CaratFaceEffectList& caratFaceEffectList = mediapipe::ParseTextProtoOrDie<mediapipe::CaratFaceEffectList>(R"pb(
+        effect { id: 1 texture_path: "mediapipe/graphs/face_effect/data/axis.pngblob" mesh_3d_path: "mediapipe/graphs/face_effect/data/axis.binarypb" }
+    )pb");
+    mediapipe::Packet caratFaceEffectListPacket =
+        mediapipe::MakePacket<mediapipe::CaratFaceEffectList>(caratFaceEffectList).At(graphTimestamp);
+    [self.mediapipeGraph movePacket:std::move(caratFaceEffectListPacket) intoStream:kCaratFaceEffectListInputStream error:nil];
 }
 
 #pragma mark - MPPGraphDelegate methods
