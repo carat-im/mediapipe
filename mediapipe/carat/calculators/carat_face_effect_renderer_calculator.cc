@@ -71,38 +71,8 @@ class EffectRendererCalculator : public CalculatorBase {
 
     MP_RETURN_IF_ERROR(gpu_helper_.Open(cc))
         << "Failed to open the GPU helper!";
-    return gpu_helper_.RunInGlContext([&]() -> absl::Status {
-      const auto& environment = cc->InputSidePackets()
-                                    .Tag(kEnvironmentTag)
-                                    .Get<face_geometry::Environment>();
 
-      MP_RETURN_IF_ERROR(face_geometry::ValidateEnvironment(environment))
-          << "Invalid environment!";
-
-      // const auto& options =
-      //     cc->Options<FaceGeometryEffectRendererCalculatorOptions>();
-
-      // absl::optional<face_geometry::Mesh3d> effect_mesh_3d;
-      // if (options.has_effect_mesh_3d_path()) {
-      //   ASSIGN_OR_RETURN(effect_mesh_3d,
-      //                    ReadMesh3dFromFile(options.effect_mesh_3d_path()),
-      //                    _ << "Failed to read the effect 3D mesh from file!");
-
-      //   MP_RETURN_IF_ERROR(face_geometry::ValidateMesh3d(*effect_mesh_3d))
-      //       << "Invalid effect 3D mesh!";
-      // }
-
-      // ASSIGN_OR_RETURN(ImageFrame effect_texture,
-      //                  ReadTextureFromFile(options.effect_texture_path()),
-      //                  _ << "Failed to read the effect texture from file!");
-
-      // ASSIGN_OR_RETURN(effect_renderer_,
-      //                  CreateEffectRenderer(environment, effect_mesh_3d,
-      //                                       std::move(effect_texture)),
-      //                  _ << "Failed to create the effect renderer!");
-
-      return absl::OkStatus();
-    });
+    return absl::OkStatus();
   }
 
   absl::Status Process(CalculatorContext* cc) override {
@@ -114,16 +84,60 @@ class EffectRendererCalculator : public CalculatorBase {
     }
 
     return gpu_helper_.RunInGlContext([this, cc]() -> absl::Status {
+      const CaratFaceEffectList& effect_list = cc->Inputs().Tag(kCaratFaceEffectListTag).Get<CaratFaceEffectList>();
+      int hash = -1;
+      int multiplier = 1;
+      for (const auto& effect : effect_list.effect()) {
+        hash = hash + effect.id() * multiplier;
+        multiplier = multiplier * 10;
+      }
+
+      if (current_effect_list_hash_ != hash) {
+        current_effect_list_hash_ = hash;
+        for (auto& effect_renderer : effect_renderers_) {
+          effect_renderer.reset();
+        }
+        effect_renderers_.clear();
+
+        const auto& environment = cc->InputSidePackets()
+                                      .Tag(kEnvironmentTag)
+                                      .Get<face_geometry::Environment>();
+
+        MP_RETURN_IF_ERROR(face_geometry::ValidateEnvironment(environment))
+            << "Invalid environment!";
+
+        for (const auto& effect : effect_list.effect()) {
+          std::unique_ptr<face_geometry::EffectRenderer> effect_renderer;
+
+          absl::optional<face_geometry::Mesh3d> effect_mesh_3d;
+          if (effect.mesh_3d_path().size() > 0) {
+            ASSIGN_OR_RETURN(effect_mesh_3d,
+                              ReadMesh3dFromFile(effect.mesh_3d_path()),
+                              _ << "Failed to read the effect 3D mesh from file!");
+
+            MP_RETURN_IF_ERROR(face_geometry::ValidateMesh3d(*effect_mesh_3d))
+                << "Invalid effect 3D mesh!";
+          }
+
+          ASSIGN_OR_RETURN(ImageFrame effect_texture,
+                           ReadTextureFromFile(effect.texture_path()),
+                           _ << "Failed to read the effect texture from file!");
+
+          ASSIGN_OR_RETURN(effect_renderer,
+                           CreateEffectRenderer(environment, effect_mesh_3d,
+                                                std::move(effect_texture)),
+                           _ << "Failed to create the effect renderer!");
+          effect_renderers_.push_back(std::move(effect_renderer));
+        }
+      }
+
       const auto& input_gpu_buffer =
           cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
 
       GlTexture input_gl_texture =
           gpu_helper_.CreateSourceTexture(input_gpu_buffer);
 
-      const CaratFaceEffectList& got = cc->Inputs().Tag(kCaratFaceEffectListTag).Get<CaratFaceEffectList>();
-      LOG(WARNING) << "size: " << std::to_string(got.effect_size());
-      LOG(WARNING) << "texture_path: " << got.effect(0).texture_path();
-      if (got.effect_size() >= 0) {
+      if (effect_renderers_.size() == 0) {
         std::unique_ptr<GpuBuffer> output_gpu_buffer =
             input_gl_texture.GetFrame<GpuBuffer>();
 
@@ -136,9 +150,6 @@ class EffectRendererCalculator : public CalculatorBase {
 
         return absl::OkStatus();
       }
-
-      GlTexture output_gl_texture = gpu_helper_.CreateDestinationTexture(
-          input_gl_texture.width(), input_gl_texture.height());
 
       std::vector<face_geometry::FaceGeometry> empty_multi_face_geometry;
       const auto& multi_face_geometry =
@@ -155,12 +166,27 @@ class EffectRendererCalculator : public CalculatorBase {
             << "Invalid face geometry!";
       }
 
-      MP_RETURN_IF_ERROR(effect_renderer_->RenderEffect(
-          multi_face_geometry, input_gl_texture.width(),
-          input_gl_texture.height(), input_gl_texture.target(),
-          input_gl_texture.name(), output_gl_texture.target(),
-          output_gl_texture.name()))
-          << "Failed to render the effect!";
+      GlTexture output_gl_texture = gpu_helper_.CreateDestinationTexture(
+          input_gl_texture.width(), input_gl_texture.height());
+
+      bool is_first_renderer = true;
+      for (auto& effect_renderer : effect_renderers_) {
+        if (!is_first_renderer) {
+          input_gl_texture.Release();
+          input_gl_texture = output_gl_texture;
+          output_gl_texture = gpu_helper_.CreateDestinationTexture(
+            input_gl_texture.width(), input_gl_texture.height());
+        }
+
+        MP_RETURN_IF_ERROR(effect_renderer->RenderEffect(
+            multi_face_geometry, input_gl_texture.width(),
+            input_gl_texture.height(), input_gl_texture.target(),
+            input_gl_texture.name(), output_gl_texture.target(),
+            output_gl_texture.name()))
+            << "Failed to render the effect!";
+
+        is_first_renderer = false;
+      }
 
       std::unique_ptr<GpuBuffer> output_gpu_buffer =
           output_gl_texture.GetFrame<GpuBuffer>();
@@ -258,8 +284,8 @@ class EffectRendererCalculator : public CalculatorBase {
   }
 
   mediapipe::GlCalculatorHelper gpu_helper_;
-  std::unique_ptr<face_geometry::EffectRenderer> effect_renderer_;
   std::vector<std::unique_ptr<face_geometry::EffectRenderer>> effect_renderers_;
+  int current_effect_list_hash_ = -1;
 };
 
 }  // namespace

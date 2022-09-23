@@ -87,7 +87,9 @@ static const int kSelectedEffectIdFacepaint = 2;
     [self.mediapipeGraph sendPixelBuffer:pixelBuffer intoStream:kInputStream packetType:MPPPacketTypePixelBuffer timestamp:graphTimestamp];
 
     const mediapipe::CaratFaceEffectList& caratFaceEffectList = mediapipe::ParseTextProtoOrDie<mediapipe::CaratFaceEffectList>(R"pb(
-        effect { id: 1 texture_path: "mediapipe/graphs/face_effect/data/axis.pngblob" mesh_3d_path: "mediapipe/graphs/face_effect/data/axis.binarypb" }
+        effect { id: 1 texture_path: "mediapipe/graphs/face_effect/data/facepaint.pngblob" }
+        effect { id: 3 texture_path: "mediapipe/carat/data/dino.pngblob" mesh_3d_path: "mediapipe/carat/data/dino.binarypb" }
+        effect { id: 2 texture_path: "mediapipe/carat/data/cinnamon.pngblob" mesh_3d_path: "mediapipe/carat/data/cinnamon.binarypb" }
     )pb");
     mediapipe::Packet caratFaceEffectListPacket =
         mediapipe::MakePacket<mediapipe::CaratFaceEffectList>(caratFaceEffectList).At(graphTimestamp);
