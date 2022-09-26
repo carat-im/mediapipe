@@ -8,3 +8,4 @@ mediapipe/provisioning_profile.mobileprovision
 **/CaratMediapipeGraph.framework/
 
 .vscode/
+.idea/
