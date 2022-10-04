@@ -18,10 +18,9 @@ static const char* kMultiFaceGeometryStream = "multi_face_geometry";
 
 static const int kNumFaces = 5;
 
-static const int kSelectedEffectIdFacepaint = 2;
-
 @interface CaratMediapipeGraph() <MPPGraphDelegate>
 @property(nonatomic) MPPGraph* mediapipeGraph;
+@property(nonatomic) NSString *caratFaceEffectListString;
 @end
 
 @implementation CaratMediapipeGraph {}
@@ -67,6 +66,8 @@ static const int kSelectedEffectIdFacepaint = 2;
         [self.mediapipeGraph addFrameOutputStream:kLandmarksOutputStream outputPacketType:MPPPacketTypeRaw];
         [self.mediapipeGraph addFrameOutputStream:kMultiFaceGeometryStream outputPacketType:MPPPacketTypeRaw];
         [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<int>(kNumFaces)) named:kNumFacesInputSidePacket];
+
+        self.caratFaceEffectListString = @"";
     }
     return self;
 }
@@ -86,14 +87,32 @@ static const int kSelectedEffectIdFacepaint = 2;
 
     [self.mediapipeGraph sendPixelBuffer:pixelBuffer intoStream:kInputStream packetType:MPPPacketTypePixelBuffer timestamp:graphTimestamp];
 
-    const mediapipe::CaratFaceEffectList& caratFaceEffectList = mediapipe::ParseTextProtoOrDie<mediapipe::CaratFaceEffectList>(R"pb(
-        effect { id: 3 texture_path: "mediapipe/carat/data/clown.pngblob" }
-        effect { id: 2 texture_path: "mediapipe/carat/data/cinnamon.pngblob" mesh_3d_path: "mediapipe/carat/data/cinnamon.binarypb" }
-        effect { id: 2 texture_path: "mediapipe/carat/data/rabbit.pngblob" mesh_3d_path: "mediapipe/carat/data/rabbit.binarypb" }
-    )pb");
+    const mediapipe::CaratFaceEffectList& caratFaceEffectList = mediapipe::ParseTextProtoOrDie<mediapipe::CaratFaceEffectList>([self.caratFaceEffectListString UTF8String]);
     mediapipe::Packet caratFaceEffectListPacket =
         mediapipe::MakePacket<mediapipe::CaratFaceEffectList>(caratFaceEffectList).At(graphTimestamp);
     [self.mediapipeGraph movePacket:std::move(caratFaceEffectListPacket) intoStream:kCaratFaceEffectListInputStream error:nil];
+}
+
+- (void)setFaceEffects:(NSArray *)effects {
+  int size = [effects count];
+  if (size == 0) {
+    self.caratFaceEffectListString = @"";
+    return;
+  }
+
+  NSString *res = @"";
+  for (int i = 0; i < size; i++) {
+    if (i + 1 < size && [effects[i+1] hasSuffix:@"binarypb"]) {
+      NSString *row = [NSString stringWithFormat:@"\neffect { id: 1 texture_path: \"%@\" mesh_3d_path: \"%@\" }", effects[i], effects[i+1]];
+      res = [res stringByAppendingString:row];
+      i = i + 1;
+    } else {
+      NSString *row = [NSString stringWithFormat:@"\neffect { id: 1 texture_path: \"%@\" }", effects[i]];
+      res = [res stringByAppendingString:row];
+    }
+  }
+
+  self.caratFaceEffectListString = res;
 }
 
 #pragma mark - MPPGraphDelegate methods
