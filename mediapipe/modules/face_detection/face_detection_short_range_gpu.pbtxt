@@ -20,6 +20,7 @@ node {
     [type.googleapis.com/mediapipe.FaceDetectionOptions] {
       gpu_origin: TOP_LEFT
       delegate: { gpu { use_advanced_gpu_api: true } }
+      min_score_thresh: 0.75
     }
   }
   option_value: "OPTIONS:options"
