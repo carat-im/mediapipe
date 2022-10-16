@@ -93,6 +93,5 @@ node {
 node {
   calculator: "AnnotationOverlayCalculator"
   input_stream: "IMAGE_GPU:face_effect_output_video"
-  input_stream: "rects_render_data"
   output_stream: "IMAGE_GPU:output_video"
 }
