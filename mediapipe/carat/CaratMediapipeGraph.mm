@@ -23,7 +23,9 @@ static const int kNumFaces = 5;
 @property(nonatomic) NSString *caratFaceEffectListString;
 @end
 
-@implementation CaratMediapipeGraph {}
+@implementation CaratMediapipeGraph {
+  CMTime _lastTimestamp;
+}
 
 #pragma mark - Cleanup methods
 
@@ -82,6 +84,11 @@ static const int kNumFaces = 5;
 }
 
 - (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer timestamp:(CMTime)timestamp {
+    if (CMTimeCompare(_lastTimestamp, timestamp) == 0) {
+      return;
+    }
+    _lastTimestamp = timestamp;
+
     mediapipe::Timestamp graphTimestamp(static_cast<mediapipe::TimestampBaseType>(
         mediapipe::Timestamp::kTimestampUnitsPerSecond * CMTimeGetSeconds(timestamp)));
 
