@@ -13,5 +13,6 @@
 - (void)startGraph;
 - (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer timestamp:(CMTime)timestamp;
 - (void)setFaceEffects:(NSArray *)effects;
+- (void)waitUntilIdle;
 @property(weak, nonatomic) id <CaratMediapipeGraphDelegate> delegate;
 @end

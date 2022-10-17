@@ -93,6 +93,10 @@ static const int kNumFaces = 5;
     [self.mediapipeGraph movePacket:std::move(caratFaceEffectListPacket) intoStream:kCaratFaceEffectListInputStream error:nil];
 }
 
+- (void)waitUntilIdle {
+  [self.mediapipeGraph waitUntilIdleWithError:nil];
+}
+
 - (void)setFaceEffects:(NSArray *)effects {
   int size = [effects count];
   if (size == 0) {
