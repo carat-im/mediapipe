@@ -114,11 +114,11 @@ static const int kNumFaces = 5;
   NSString *res = @"";
   for (int i = 0; i < size; i++) {
     if (i + 1 < size && [effects[i+1] hasSuffix:@"binarypb"]) {
-      NSString *row = [NSString stringWithFormat:@"\neffect { id: 1 texture_path: \"%@\" mesh_3d_path: \"%@\" }", effects[i], effects[i+1]];
+      NSString *row = [NSString stringWithFormat:@"\neffect { id: %d texture_path: \"%@\" mesh_3d_path: \"%@\" }", ((NSString *)effects[i]).hash, effects[i], effects[i+1]];
       res = [res stringByAppendingString:row];
       i = i + 1;
     } else {
-      NSString *row = [NSString stringWithFormat:@"\neffect { id: 1 texture_path: \"%@\" }", effects[i]];
+      NSString *row = [NSString stringWithFormat:@"\neffect { id: %d texture_path: \"%@\" }", ((NSString *)effects[i]).hash, effects[i]];
       res = [res stringByAppendingString:row];
     }
   }
