@@ -32,3 +32,18 @@ mediapipe_register_type(
     ],
     deps = [":carat_face_effect_cc_proto"],
 )
+
+mediapipe_proto_library(
+    name = "color_lut_proto",
+    srcs = ["color_lut.proto"],
+    visibility = ["//visibility:public"],
+)
+
+mediapipe_register_type(
+    base_name = "color_lut",
+    include_headers = ["mediapipe/carat/formats/color_lut.pb.h"],
+    types = [
+        "::mediapipe::ColorLut",
+    ],
+    deps = [":color_lut_cc_proto"],
+)

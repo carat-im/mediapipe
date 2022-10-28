@@ -1,0 +1,13 @@
+syntax = "proto2";
+
+package mediapipe;
+
+option java_package = "com.google.mediapipe.formats.proto";
+option java_outer_classname = "ColorLutProto";
+
+message ColorLut {
+  optional string lut_path = 1;
+  optional float intensity = 2;
+  optional float grain = 3;
+  optional float vignette = 4;
+}

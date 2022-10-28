@@ -3,6 +3,7 @@
 
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/carat/formats/carat_face_effect.pb.h"
+#include "mediapipe/carat/formats/color_lut.pb.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
 
 static NSString* const kGraphName = @"carat_mediapipe_graph";
@@ -12,6 +13,7 @@ static const char* kOutputStream = "output_video";
 
 static const char* kNumFacesInputSidePacket = "num_faces";
 static const char* kCaratFaceEffectListInputStream = "carat_face_effect_list";
+static const char* kColorLutInputStream = "color_lut";
 
 static const char* kLandmarksOutputStream = "multi_face_landmarks";
 static const char* kMultiFaceGeometryStream = "multi_face_geometry";
@@ -21,10 +23,16 @@ static const int kNumFaces = 5;
 @interface CaratMediapipeGraph() <MPPGraphDelegate>
 @property(nonatomic) MPPGraph* mediapipeGraph;
 @property(nonatomic) NSString *caratFaceEffectListString;
+@property(nonatomic) NSString *colorLutString;
 @end
 
 @implementation CaratMediapipeGraph {
   CMTime _lastTimestamp;
+
+  NSString *_lutFilePath;
+  float _lutIntensity;
+  float _lutGrain;
+  float _lutVignette;
 }
 
 #pragma mark - Cleanup methods
@@ -70,6 +78,7 @@ static const int kNumFaces = 5;
         [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<int>(kNumFaces)) named:kNumFacesInputSidePacket];
 
         self.caratFaceEffectListString = @"";
+        self.colorLutString = @"";
     }
     return self;
 }
@@ -98,6 +107,11 @@ static const int kNumFaces = 5;
     mediapipe::Packet caratFaceEffectListPacket =
         mediapipe::MakePacket<mediapipe::CaratFaceEffectList>(caratFaceEffectList).At(graphTimestamp);
     [self.mediapipeGraph movePacket:std::move(caratFaceEffectListPacket) intoStream:kCaratFaceEffectListInputStream error:nil];
+
+    const mediapipe::ColorLut& colorLut = mediapipe::ParseTextProtoOrDie<mediapipe::ColorLut>([self.colorLutString UTF8String]);
+    mediapipe::Packet colorLutPacket =
+        mediapipe::MakePacket<mediapipe::ColorLut>(colorLut).At(graphTimestamp);
+    [self.mediapipeGraph movePacket:std::move(colorLutPacket) intoStream:kColorLutInputStream error:nil];
 }
 
 - (void)waitUntilIdle {
@@ -124,6 +138,34 @@ static const int kNumFaces = 5;
   }
 
   self.caratFaceEffectListString = res;
+}
+
+- (void)setColorLut:(NSString *)filePath intensity:(NSNumber *)intensity grain:(NSNumber *)grain vignette:(NSNumber *)vignette {
+  if (filePath == [NSNull null]) {
+    _lutFilePath = nil;
+  } else {
+    _lutFilePath = filePath;
+  }
+
+  _lutIntensity = intensity == [NSNull null] ? 0 : intensity.floatValue;
+  _lutGrain = grain == [NSNull null] ? 0 : grain.floatValue;
+  _lutVignette = vignette == [NSNull null] ? 0 : vignette.floatValue;
+
+  [self makeColorLutString];
+}
+
+- (void)setColorLutIntensity:(NSNumber *)intensity {
+  _lutIntensity = intensity == [NSNull null] ? 0 : intensity.floatValue;
+
+  [self makeColorLutString];
+}
+
+- (void)makeColorLutString {
+  if (_lutFilePath == nil) {
+    self.colorLutString = @"";
+  } else {
+    self.colorLutString = [NSString stringWithFormat:@"lut_path: \"%@\" intensity: %f grain: %f vignette: %f", _lutFilePath, _lutIntensity, _lutGrain, _lutVignette];
+  }
 }
 
 #pragma mark - MPPGraphDelegate methods

@@ -4,6 +4,9 @@ input_stream: "input_video"
 # CaratFaceEffectList
 input_stream: "carat_face_effect_list"
 
+# ColorLut
+input_stream: "color_lut"
+
 # int
 input_side_packet: "num_faces"
 
@@ -25,6 +28,13 @@ node {
     back_edge: true
   }
   output_stream: "throttled_input_video"
+}
+
+node {
+  calculator: "ColorLutFilterCalculator"
+  input_stream: "IMAGE_GPU:throttled_input_video"
+  input_stream: "COLOR_LUT:color_lut"
+  output_stream: "IMAGE_GPU:lut_filtered_video"
 }
 
 node {
@@ -70,7 +80,7 @@ node {
 
 node {
   calculator: "CaratFaceEffectRendererCalculator"
-  input_stream: "IMAGE_GPU:throttled_input_video"
+  input_stream: "IMAGE_GPU:lut_filtered_video"
   input_stream: "MULTI_FACE_GEOMETRY:multi_face_geometry"
   input_stream: "CARAT_FACE_EFFECT_LIST:carat_face_effect_list"
   input_side_packet: "ENVIRONMENT:environment"
