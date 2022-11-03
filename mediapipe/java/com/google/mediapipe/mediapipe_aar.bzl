@@ -122,6 +122,7 @@ EOF
                    "com/google/mediapipe/formats/proto/LocationDataProto.java",
                    "com/google/mediapipe/proto/CalculatorProto.java",
                    "com/google/mediapipe/formats/proto/CaratFaceEffectProto.java",
+                   "com/google/mediapipe/formats/proto/ColorLutProto.java",
                ] +
                select({
                    "//conditions:default": [],
@@ -253,6 +254,15 @@ def _mediapipe_proto(name):
         name = "carat_face_effect_proto",
         proto_src = "mediapipe/carat/formats/carat_face_effect.proto",
         java_lite_out = "com/google/mediapipe/formats/proto/CaratFaceEffectProto.java",
+        srcs = [
+            "//mediapipe/carat/formats:protos_src",
+        ],
+    )
+
+    _proto_java_src_generator(
+        name = "color_lut_proto",
+        proto_src = "mediapipe/carat/formats/color_lut.proto",
+        java_lite_out = "com/google/mediapipe/formats/proto/ColorLutProto.java",
         srcs = [
             "//mediapipe/carat/formats:protos_src",
         ],
