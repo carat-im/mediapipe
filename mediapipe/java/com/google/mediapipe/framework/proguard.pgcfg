@@ -27,3 +27,5 @@
 
 # Required to use PacketCreator#createProto
 -keep class com.google.mediapipe.framework.ProtoUtil$SerializedMessage { *; }
+
+-keep public class com.google.mediapipe.formats.proto.* { *; }

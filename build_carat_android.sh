@@ -16,14 +16,12 @@ bazel build -c opt --strip=ALWAYS \
     //mediapipe/carat/android/src/java/com/carat/camera/caratmediapipegraph/apps/carat:carat_mediapipe.aar
 bazel build -c opt mediapipe/carat:carat_mediapipe_graph
 
-mkdir -p ../android/app/libs
 mkdir -p ../android/app/src/main/assets
-cp -rf bazel-bin/mediapipe/carat/android/src/java/com/carat/camera/caratmediapipegraph/apps/carat/carat_mediapipe.aar ../android/app/libs
+cp -rf bazel-bin/mediapipe/carat/android/src/java/com/carat/camera/caratmediapipegraph/apps/carat/carat_mediapipe.aar ../android/mediapipe
 cp -rf bazel-bin/mediapipe/carat/carat_mediapipe_graph.binarypb ../android/app/src/main/assets
 
-mkdir -p ../plugins/packages/camera/camera/android/libs
 mkdir -p ../plugins/packages/camera/camera/android/src/main/assets
-cp -rf bazel-bin/mediapipe/carat/android/src/java/com/carat/camera/caratmediapipegraph/apps/carat/carat_mediapipe.aar ../plugins/packages/camera/camera/android/libs
+cp -rf bazel-bin/mediapipe/carat/android/src/java/com/carat/camera/caratmediapipegraph/apps/carat/carat_mediapipe.aar ../plugins/packages/camera/camera/android/mediapipe
 cp -rf bazel-bin/mediapipe/carat/carat_mediapipe_graph.binarypb ../plugins/packages/camera/camera/android/src/main/assets
 
 # 처음이라면 app/build.gradle에 dependency 추가해주기. https://google.github.io/mediapipe/getting_started/android_archive_library.html
