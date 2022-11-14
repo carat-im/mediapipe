@@ -203,7 +203,7 @@ absl::Status InferenceCalculatorGlImpl::GpuInferenceRunner::Process(
         }
 
         // Run inference.
-        interpreter_->Invoke();
+          RET_CHECK_EQ(interpreter_->Invoke(), kTfLiteOk);
 
         output_tensors.reserve(output_size_);
         for (int i = 0; i < output_size_; ++i) {
