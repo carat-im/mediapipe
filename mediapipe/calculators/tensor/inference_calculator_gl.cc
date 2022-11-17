@@ -203,7 +203,10 @@ absl::Status InferenceCalculatorGlImpl::GpuInferenceRunner::Process(
         }
 
         // Run inference.
-          RET_CHECK_EQ(interpreter_->Invoke(), kTfLiteOk);
+        const auto& result = interpreter_->Invoke();
+        if (result != kTfLiteOk) {
+          return absl::Status(absl::StatusCode::kInternal, "Interpreter invoke error");
+        }
 
         output_tensors.reserve(output_size_);
         for (int i = 0; i < output_size_; ++i) {
@@ -259,10 +262,15 @@ absl::Status InferenceCalculatorGlImpl::Process(CalculatorContext* cc) {
   RET_CHECK(!input_tensors.empty());
   auto output_tensors = absl::make_unique<std::vector<Tensor>>();
 
-  MP_RETURN_IF_ERROR(
-      gpu_inference_runner_->Process(cc, input_tensors, *output_tensors));
+  auto status = gpu_inference_runner_->Process(cc, input_tensors, *output_tensors);
+  if (status.ok()) {
+    kOutTensors(cc).Send(std::move(output_tensors));
+  } else {
+    LOG(WARNING) << "inference_calculator Process error. Trying to recover...";
+    gpu_inference_runner_ = nullptr;
+    Open(cc);
+  }
 
-  kOutTensors(cc).Send(std::move(output_tensors));
   return absl::OkStatus();
 }
 

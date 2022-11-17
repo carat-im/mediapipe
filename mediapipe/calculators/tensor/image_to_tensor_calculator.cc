@@ -262,16 +262,24 @@ class ImageToTensorCalculator : public Node {
     // Lazy initialization of the GPU or CPU converter.
     MP_RETURN_IF_ERROR(InitConverterIfNecessary(cc, *image.get()));
 
-    ASSIGN_OR_RETURN(Tensor tensor,
-                     (image->UsesGpu() ? gpu_converter_ : cpu_converter_)
+    auto statusor = (image->UsesGpu() ? gpu_converter_ : cpu_converter_)
                          ->Convert(*image, roi, {output_width_, output_height_},
-                                   range_min_, range_max_));
-
-    auto result = std::make_unique<std::vector<Tensor>>();
-    result->push_back(std::move(tensor));
-    kOutTensors(cc).Send(std::move(result));
-
+                                   range_min_, range_max_);
+    if (statusor.ok()) {
+      auto result = std::make_unique<std::vector<Tensor>>();
+      result->push_back(std::move(statusor.value()));
+      kOutTensors(cc).Send(std::move(result));
+    } else {
+      LOG(WARNING) << "image_to_tensor_calculator Process error. Trying to recover...";
+      gpu_converter_ = nullptr;
+      cpu_converter_ = nullptr;
+    }
     return absl::OkStatus();
+  }
+
+  ~ImageToTensorCalculator() override {
+    gpu_converter_ = nullptr;
+    cpu_converter_ = nullptr;
   }
 
  private:
