@@ -47,3 +47,23 @@ mediapipe_register_type(
     ],
     deps = [":color_lut_cc_proto"],
 )
+
+mediapipe_proto_library(
+    name = "carat_frame_effect_proto",
+    srcs = ["carat_frame_effect.proto"],
+    visibility = ["//visibility:public"],
+)
+
+mediapipe_register_type(
+    base_name = "carat_frame_effect",
+    include_headers = ["mediapipe/carat/formats/carat_frame_effect.pb.h"],
+    types = [
+        "::mediapipe::CaratFrameEffect",
+        "::mediapipe::CaratFrameEffectList",
+        "::mediapipe::CaratFrameEffectListCollection",
+        "::std::vector<::mediapipe::CaratFrameEffect>",
+        "::std::vector<::mediapipe::CaratFrameEffectList>",
+    ],
+    deps = [":carat_frame_effect_cc_proto"],
+)
+

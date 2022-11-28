@@ -4,6 +4,7 @@
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/carat/formats/carat_face_effect.pb.h"
 #include "mediapipe/carat/formats/color_lut.pb.h"
+#include "mediapipe/carat/formats/carat_frame_effect.pb.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
 
 static NSString* const kGraphName = @"carat_mediapipe_graph";
@@ -14,6 +15,7 @@ static const char* kOutputStream = "output_video";
 static const char* kNumFacesInputSidePacket = "num_faces";
 static const char* kCaratFaceEffectListInputStream = "carat_face_effect_list";
 static const char* kColorLutInputStream = "color_lut";
+static const char* kCaratFrameEffectListInputStream = "carat_frame_effect_list";
 
 static const char* kLandmarksOutputStream = "multi_face_landmarks";
 static const char* kMultiFaceGeometryStream = "multi_face_geometry";
@@ -24,6 +26,7 @@ static const int kNumFaces = 5;
 @property(nonatomic) MPPGraph* mediapipeGraph;
 @property(nonatomic) NSString *caratFaceEffectListString;
 @property(nonatomic) NSString *colorLutString;
+@property(nonatomic) NSString *caratFrameEffectListString;
 @end
 
 @implementation CaratMediapipeGraph {
@@ -79,6 +82,7 @@ static const int kNumFaces = 5;
 
         self.caratFaceEffectListString = @"";
         self.colorLutString = @"";
+        self.caratFrameEffectListString = @"";
     }
     return self;
 }
@@ -112,6 +116,11 @@ static const int kNumFaces = 5;
     mediapipe::Packet colorLutPacket =
         mediapipe::MakePacket<mediapipe::ColorLut>(colorLut).At(graphTimestamp);
     [self.mediapipeGraph movePacket:std::move(colorLutPacket) intoStream:kColorLutInputStream error:nil];
+
+    const mediapipe::CaratFrameEffectList& caratFrameEffectList = mediapipe::ParseTextProtoOrDie<mediapipe::CaratFrameEffectList>([self.caratFrameEffectListString UTF8String]);
+    mediapipe::Packet caratFrameEffectListPacket =
+        mediapipe::MakePacket<mediapipe::CaratFrameEffectList>(caratFrameEffectList).At(graphTimestamp);
+    [self.mediapipeGraph movePacket:std::move(caratFrameEffectListPacket) intoStream:kCaratFrameEffectListInputStream error:nil];
 }
 
 - (void)waitUntilIdle {
@@ -152,6 +161,22 @@ static const int kNumFaces = 5;
   _lutVignette = vignette == [NSNull null] ? 0 : vignette.floatValue;
 
   [self makeColorLutString];
+}
+
+- (void)setFrameEffects:(NSArray *)effects {
+  int size = [effects count];
+  if (size == 0) {
+    self.caratFrameEffectListString = @"";
+    return;
+  }
+
+  NSString *res = @"";
+  for (int i = 0; i < size; i++) {
+    NSString *row = [NSString stringWithFormat:@"\neffect { id: %d texture_path: \"%@\" }", ((NSString *)effects[i]).hash, effects[i]];
+    res = [res stringByAppendingString:row];
+  }
+
+  self.caratFrameEffectListString = res;
 }
 
 - (void)setColorLutIntensity:(NSNumber *)intensity {

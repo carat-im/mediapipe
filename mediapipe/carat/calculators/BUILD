@@ -52,3 +52,18 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "carat_frame_effect_renderer_calculator",
+    srcs = ["carat_frame_effect_renderer_calculator.cc"],
+    deps = [
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/port:ret_check",
+        "//mediapipe/framework/port:status",
+        "//mediapipe/gpu:gl_calculator_helper",
+        "//mediapipe/gpu:gl_simple_shaders",
+        "//mediapipe/gpu:shader_util",
+        "//mediapipe/carat/formats:carat_frame_effect_cc_proto",
+    ],
+    alwayslink = 1,
+)

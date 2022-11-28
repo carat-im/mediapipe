@@ -1,0 +1,19 @@
+syntax = "proto2";
+
+package mediapipe;
+
+option java_package = "com.google.mediapipe.formats.proto";
+option java_outer_classname = "CaratFrameEffectProto";
+
+message CaratFrameEffect {
+    optional int64 id = 1;
+    optional string texture_path = 2;
+}
+
+message CaratFrameEffectList {
+    repeated CaratFrameEffect effect = 1;
+}
+
+message CaratFrameEffectListCollection {
+  repeated CaratFrameEffectList effect_list = 1;
+}
