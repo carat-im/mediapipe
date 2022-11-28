@@ -19,6 +19,13 @@
 #include "mediapipe/gpu/gl_simple_shaders.h"
 #include "mediapipe/gpu/shader_util.h"
 #include "mediapipe/carat/formats/carat_frame_effect.pb.h"
+#include "mediapipe/carat/libs/frame_effect_renderer.h"
+#include "mediapipe/framework/formats/image_frame.h"
+#include "mediapipe/framework/formats/image_frame_opencv.h"
+#include "mediapipe/util/resource_util.h"
+#include "mediapipe/framework/port/opencv_core_inc.h"       // NOTYPO
+#include "mediapipe/framework/port/opencv_imgcodecs_inc.h"  // NOTYPO
+#include "mediapipe/framework/port/opencv_imgproc_inc.h"    // NOTYPO
 
 enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
 
@@ -41,9 +48,15 @@ class CaratFrameEffectRendererCalculator : public CalculatorBase {
   absl::Status GlRender();
 
  private:
+  static absl::StatusOr<ImageFrame> ReadTextureFromFile(const std::string& texture_path);
+  static absl::StatusOr<std::string> ReadContentBlobFromFile(const std::string& unresolved_path);
+
   GlCalculatorHelper helper_;
   bool initialized_ = false;
   GLuint program_ = 0;
+
+  std::vector<std::unique_ptr<FrameEffectRenderer>> effect_renderers_;
+  int current_effect_list_hash_ = -1;
 };
 REGISTER_CALCULATOR(CaratFrameEffectRendererCalculator);
 
@@ -75,6 +88,35 @@ absl::Status CaratFrameEffectRendererCalculator::Process(CalculatorContext* cc) 
       initialized_ = true;
     }
 
+    const CaratFrameEffectList& effect_list = cc->Inputs().Tag(kCaratFrameEffectListTag).Get<CaratFrameEffectList>();
+    int hash = -1;
+    int multiplier = 1;
+    for (const auto& effect : effect_list.effect()) {
+      hash = hash + effect.id() * multiplier;
+      multiplier = multiplier * 10;
+    }
+
+    if (current_effect_list_hash_ != hash) {
+      current_effect_list_hash_ = hash;
+      for (auto& effect_renderer : effect_renderers_) {
+        effect_renderer.reset();
+      }
+      effect_renderers_.clear();
+
+      for (const auto& effect : effect_list.effect()) {
+        std::unique_ptr<FrameEffectRenderer> effect_renderer;
+
+        ASSIGN_OR_RETURN(ImageFrame effect_texture,
+            ReadTextureFromFile(effect.texture_path()),
+            _ << "Failed to read the effect texture from file!");
+
+        ASSIGN_OR_RETURN(effect_renderer,
+            CreateFrameEffectRenderer(std::move(effect_texture)),
+            _ << "Failed to create the effect renderer!");
+        effect_renderers_.push_back(std::move(effect_renderer));
+      }
+    }
+
     glDisable(GL_BLEND);
 
     const auto& input_gpu_buffer =
@@ -90,6 +132,7 @@ absl::Status CaratFrameEffectRendererCalculator::Process(CalculatorContext* cc) 
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(input_gl_texture.target(), input_gl_texture.name());
+    glUniform1i(glGetUniformLocation(program_, "video_frame"), 1);
 
     MP_RETURN_IF_ERROR(GlRender());
 
@@ -97,6 +140,10 @@ absl::Status CaratFrameEffectRendererCalculator::Process(CalculatorContext* cc) 
     glBindTexture(input_gl_texture.target(), 0);
 
     glFlush();
+
+    for (auto& effect_renderer : effect_renderers_) {
+      effect_renderer->RenderEffect();
+    }
 
     std::unique_ptr<GpuBuffer> output_gpu_buffer =
         output_gl_texture.GetFrame<GpuBuffer>();
@@ -131,7 +178,6 @@ absl::Status CaratFrameEffectRendererCalculator::GlSetup() {
   RET_CHECK(program_) << "Problem initializing the program.";
 
   glUseProgram(program_);
-  glUniform1i(glGetUniformLocation(program_, "video_frame"), 1);
   return absl::OkStatus();
 }
 
@@ -147,11 +193,73 @@ absl::Status CaratFrameEffectRendererCalculator::GlRender() {
   return absl::OkStatus();
 }
 
+// static
+absl::StatusOr<ImageFrame> CaratFrameEffectRendererCalculator::ReadTextureFromFile(const std::string& texture_path) {
+  ASSIGN_OR_RETURN(std::string texture_blob,
+      ReadContentBlobFromFile(texture_path),
+      _ << "Failed to read texture blob from file!");
+
+  // Use OpenCV image decoding functionality to finish reading the texture.
+  std::vector<char> texture_blob_vector(texture_blob.begin(),
+      texture_blob.end());
+  cv::Mat decoded_mat =
+      cv::imdecode(texture_blob_vector, cv::IMREAD_UNCHANGED);
+
+  RET_CHECK(decoded_mat.type() == CV_8UC3 || decoded_mat.type() == CV_8UC4)
+      << "Texture must have `char` as the underlying type and "
+         "must have either 3 or 4 channels!";
+
+  ImageFormat::Format image_format = ImageFormat::UNKNOWN;
+  cv::Mat output_mat;
+  switch (decoded_mat.channels()) {
+    case 3:
+      image_format = ImageFormat::SRGB;
+      cv::cvtColor(decoded_mat, output_mat, cv::COLOR_BGR2RGB);
+      break;
+
+    case 4:
+      image_format = ImageFormat::SRGBA;
+      cv::cvtColor(decoded_mat, output_mat, cv::COLOR_BGRA2RGBA);
+      break;
+
+    default:
+      RET_CHECK_FAIL()
+          << "Unexpected number of channels; expected 3 or 4, got "
+          << decoded_mat.channels() << "!";
+  }
+
+  ImageFrame output_image_frame(image_format, output_mat.size().width,
+      output_mat.size().height,
+      ImageFrame::kGlDefaultAlignmentBoundary);
+
+  output_mat.copyTo(formats::MatView(&output_image_frame));
+
+  return output_image_frame;
+}
+
+// static
+absl::StatusOr<std::string> CaratFrameEffectRendererCalculator::ReadContentBlobFromFile(const std::string& unresolved_path) {
+  ASSIGN_OR_RETURN(std::string resolved_path,
+      mediapipe::PathToResourceAsFile(unresolved_path),
+      _ << "Failed to resolve path! Path = " << unresolved_path);
+
+  std::string content_blob;
+  MP_RETURN_IF_ERROR(
+      mediapipe::GetResourceContents(resolved_path, &content_blob))
+      << "Failed to read content blob! Resolved path = " << resolved_path;
+
+  return content_blob;
+}
+
 CaratFrameEffectRendererCalculator::~CaratFrameEffectRendererCalculator() {
   helper_.RunInGlContext([this] {
     if (program_) {
       glDeleteProgram(program_);
       program_ = 0;
+    }
+
+    for (auto& effect_renderer : effect_renderers_) {
+      effect_renderer.reset();
     }
   });
 }

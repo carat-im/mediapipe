@@ -64,6 +64,13 @@ cc_library(
         "//mediapipe/gpu:gl_simple_shaders",
         "//mediapipe/gpu:shader_util",
         "//mediapipe/carat/formats:carat_frame_effect_cc_proto",
+        "//mediapipe/framework/formats:image_frame",
+        "//mediapipe/framework/formats:image_frame_opencv",
+        "//mediapipe/carat/libs:frame_effect_renderer",
+        "//mediapipe/util:resource_util",
+        "//mediapipe/framework/port:opencv_core",
+        "//mediapipe/framework/port:opencv_imgcodecs",
+        "//mediapipe/framework/port:opencv_imgproc",
     ],
     alwayslink = 1,
 )
