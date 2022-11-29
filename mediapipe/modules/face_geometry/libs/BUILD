@@ -36,6 +36,7 @@ cc_library(
         "//mediapipe/modules/face_geometry/protos:mesh_3d_cc_proto",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
+        "//mediapipe/gpu:gl_simple_shaders",
     ],
 )
 

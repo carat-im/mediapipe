@@ -20,3 +20,12 @@ cc_library(
         "@com_google_absl//absl/types:optional",
     ],
 )
+
+cc_library(
+    name = "gl_errors",
+    srcs = ["gl_errors.cc"],
+    hdrs = ["gl_errors.h"],
+    deps = [
+        "//mediapipe/framework/port:status",
+    ],
+)

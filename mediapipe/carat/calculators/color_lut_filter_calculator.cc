@@ -32,7 +32,7 @@ constexpr char kColorLutTag[] = "COLOR_LUT";
 namespace mediapipe {
 
 class ColorLutFilterCalculator : public CalculatorBase {
- public:
+  public:
   ColorLutFilterCalculator() = default;
   ~ColorLutFilterCalculator() override = default;
 
@@ -42,7 +42,7 @@ class ColorLutFilterCalculator : public CalculatorBase {
   absl::Status Process(CalculatorContext* cc) override;
   absl::Status Close(CalculatorContext* cc) override;
 
- private:
+  private:
   absl::Status InitGpu(CalculatorContext* cc);
   absl::Status RenderGpu(CalculatorContext* cc);
 
@@ -129,21 +129,8 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       "texture_coordinate",
   };
 
-  const std::string frag_src = R"(
-  #if __VERSION__ < 130
-    #define in varying
-  #endif  // __VERSION__ < 130
-
-  #ifdef GL_ES
-    #define fragColor gl_FragColor
-    precision highp float;
-  #else
-    #define lowp
-    #define mediump
-    #define highp
-    #define texture2D texture
-    out vec4 fragColor;
-  #endif  // defined(GL_ES)
+  const std::string frag_src = std::string(kMediaPipeFragmentShaderPreamble) + R"(
+    DEFAULT_PRECISION(highp, float)
 
     in vec2 sample_coordinate;
     uniform sampler2D frame;
@@ -197,14 +184,14 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
 
     void main() {
       vec4 color = texture2D(frame, sample_coordinate);
-      fragColor = lookup_table(color);
+      gl_FragColor = lookup_table(color);
 
       if (grain != 0.0) {
-        fragColor = grain_filter(fragColor, sample_coordinate, grain * intensity);
+        gl_FragColor = grain_filter(gl_FragColor, sample_coordinate, grain * intensity);
       }
 
       if (vignette != 0.0) {
-        fragColor = fragColor * vignette_filter(sample_coordinate, (1.0 - vignette * intensity));
+        gl_FragColor = gl_FragColor * vignette_filter(sample_coordinate, (1.0 - vignette * intensity));
       }
     }
   )";

@@ -1,5 +1,5 @@
-#ifndef MEDIAPIPE_MODULES_FRAME_EFFECT_RENDERER_H_
-#define MEDIAPIPE_MODULES_FRAME_EFFECT_RENDERER_H_
+#ifndef CARAT_LIBS_FRAME_EFFECT_RENDERER_H_
+#define CARAT_LIBS_FRAME_EFFECT_RENDERER_H_
 
 #include <memory>
 #include <vector>
@@ -25,4 +25,4 @@ absl::StatusOr<std::unique_ptr<FrameEffectRenderer>> CreateFrameEffectRenderer(I
 
 }  // namespace mediapipe
 
-#endif  // MEDIAPIPE_MODULES_FRAME_EFFECT_RENDERER_H_
+#endif  // CARAT_LIBS_FRAME_EFFECT_RENDERER_H_

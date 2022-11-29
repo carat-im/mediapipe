@@ -37,6 +37,7 @@
 #include "mediapipe/modules/face_geometry/protos/environment.pb.h"
 #include "mediapipe/modules/face_geometry/protos/face_geometry.pb.h"
 #include "mediapipe/modules/face_geometry/protos/mesh_3d.pb.h"
+#include "mediapipe/gpu/gl_simple_shaders.h"
 
 namespace mediapipe::face_geometry {
 namespace {
@@ -298,47 +299,46 @@ class Renderer {
         "tex_coord",
     };
 
-    static const GLchar* kVertSrc = R"(
+    const std::string vert_src = std::string(kMediaPipeVertexShaderPreamble) + R"(
+      in vec4 position;
+      in mediump vec4 tex_coord;
+      out mediump vec2 sample_coordinate;
       uniform mat4 projection_mat;
       uniform mat4 model_mat;
 
-      attribute vec4 position;
-      attribute vec4 tex_coord;
-
-      varying vec2 v_tex_coord;
-
       void main() {
-        v_tex_coord = tex_coord.xy;
+        sample_coordinate = tex_coord.xy;
         gl_Position = projection_mat * model_mat * position;
       }
     )";
 
-    static const GLchar* kFragSrc = R"(
-      precision mediump float;
+    const std::string frag_src = std::string(kMediaPipeFragmentShaderPreamble) + R"(
+      DEFAULT_PRECISION(mediump, float)
 
-      varying vec2 v_tex_coord;
-      uniform sampler2D texture;
+      in vec2 sample_coordinate;
+      uniform sampler2D input_texture;
 
       void main() {
-        gl_FragColor = texture2D(texture, v_tex_coord);
+        gl_FragColor = texture2D(input_texture, sample_coordinate);
       }
     )";
 
     GLuint program_handle = 0;
-    GlhCreateProgram(kVertSrc, kFragSrc, NUM_ATTRIBUTES,
+    GlhCreateProgram(vert_src.c_str(), frag_src.c_str(), NUM_ATTRIBUTES,
                      (const GLchar**)&kAttrName[0], kAttrLocation,
                      &program_handle);
     RET_CHECK(program_handle) << "Problem initializing the texture program!";
+
     GLint projection_mat_uniform =
         glGetUniformLocation(program_handle, "projection_mat");
     GLint model_mat_uniform = glGetUniformLocation(program_handle, "model_mat");
-    GLint texture_uniform = glGetUniformLocation(program_handle, "texture");
+    GLint texture_uniform = glGetUniformLocation(program_handle, "input_texture");
 
     RET_CHECK_NE(projection_mat_uniform, -1)
         << "Failed to find `projection_mat` uniform!";
     RET_CHECK_NE(model_mat_uniform, -1)
         << "Failed to find `model_mat` uniform!";
-    RET_CHECK_NE(texture_uniform, -1) << "Failed to find `texture` uniform!";
+    RET_CHECK_NE(texture_uniform, -1) << "Failed to find `input_texture` uniform!";
 
     return absl::WrapUnique(new Renderer(program_handle, projection_mat_uniform,
                                          model_mat_uniform, texture_uniform));
@@ -352,6 +352,7 @@ class Renderer {
                       const std::array<float, 16>& model_mat,
                       RenderMode render_mode) const {
     glUseProgram(program_handle_);
+
     // Set up the GL state.
     glEnable(GL_BLEND);
     glFrontFace(GL_CCW);
@@ -449,6 +450,12 @@ class EffectRendererImpl : public EffectRenderer {
         empty_color_texture_(std::move(empty_color_texture)),
         effect_texture_(std::move(effect_texture)),
         identity_matrix_(Create4x4IdentityMatrix()) {}
+  ~EffectRendererImpl() {
+    render_target_.reset();
+    renderer_.reset();
+    empty_color_texture_.reset();
+    effect_texture_.reset();
+  }
 
   absl::Status RenderEffect(
       const std::vector<FaceGeometry>& multi_face_geometry,
