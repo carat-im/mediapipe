@@ -250,6 +250,7 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
 
   const auto& input_gpu_buffer =
       cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
+
   GlTexture input_gl_texture =
       gpu_helper_.CreateSourceTexture(input_gpu_buffer);
 

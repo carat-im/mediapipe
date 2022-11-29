@@ -118,9 +118,7 @@ class FrameEffectRendererImpl : public FrameEffectRenderer {
 
     glEnable(GL_BLEND);
     glBlendEquation(GL_FUNC_ADD);
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glUniformMatrix4fv(matrix_uniform_, 1, GL_FALSE, identity_matrix_.data());
 
@@ -148,8 +146,6 @@ class FrameEffectRendererImpl : public FrameEffectRenderer {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(frame_texture.target(), 0);
 
-    glDepthMask(GL_FALSE);
-    glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
 
     glUseProgram(0);

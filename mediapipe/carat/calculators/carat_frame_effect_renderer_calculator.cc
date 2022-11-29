@@ -167,27 +167,27 @@ absl::Status CaratFrameEffectRendererCalculator::RenderGpu(CalculatorContext *cc
     multiplier = multiplier * 10;
   }
 
-//  if (current_effect_list_hash_ != hash) {
-//    current_effect_list_hash_ = hash;
-//    for (auto& effect_renderer : effect_renderers_) {
-//      effect_renderer.reset();
-//    }
-//    effect_renderers_.clear();
-//
-//    for (const auto& effect : effect_list.effect()) {
-//      std::unique_ptr<FrameEffectRenderer> effect_renderer;
-//
-//      ASSIGN_OR_RETURN(std::shared_ptr<ImageFrame> image_frame,
-//          ReadTextureFromFileAsPng(effect.texture_path()),
-//          _ << "Failed to read the effect texture from file!");
-//
-//      std::unique_ptr<GpuBuffer> texture_gpu_buffer = absl::make_unique<GpuBuffer>(gpu_helper_->GpuBufferWithImageFrame(image_frame));
-//      ASSIGN_OR_RETURN(effect_renderer,
-//          CreateFrameEffectRenderer(std::move(texture_gpu_buffer), gpu_helper_),
-//          _ << "Failed to create the effect renderer!");
-//      effect_renderers_.push_back(std::move(effect_renderer));
-//    }
-//  }
+  if (current_effect_list_hash_ != hash) {
+    current_effect_list_hash_ = hash;
+    for (auto& effect_renderer : effect_renderers_) {
+      effect_renderer.reset();
+    }
+    effect_renderers_.clear();
+
+    for (const auto& effect : effect_list.effect()) {
+      std::unique_ptr<FrameEffectRenderer> effect_renderer;
+
+      ASSIGN_OR_RETURN(std::shared_ptr<ImageFrame> image_frame,
+          ReadTextureFromFileAsPng(effect.texture_path()),
+          _ << "Failed to read the effect texture from file!");
+
+      std::unique_ptr<GpuBuffer> texture_gpu_buffer = absl::make_unique<GpuBuffer>(gpu_helper_->GpuBufferWithImageFrame(image_frame));
+      ASSIGN_OR_RETURN(effect_renderer,
+          CreateFrameEffectRenderer(std::move(texture_gpu_buffer), gpu_helper_),
+          _ << "Failed to create the effect renderer!");
+      effect_renderers_.push_back(std::move(effect_renderer));
+    }
+  }
 
   const auto& input_gpu_buffer =
       cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
@@ -236,9 +236,9 @@ absl::Status CaratFrameEffectRendererCalculator::RenderGpu(CalculatorContext *cc
 
   glFlush();
 
-//  for (auto& effect_renderer : effect_renderers_) {
-//    effect_renderer->RenderEffect();
-//  }
+  for (auto& effect_renderer : effect_renderers_) {
+    effect_renderer->RenderEffect();
+  }
 
   std::unique_ptr<GpuBuffer> output_gpu_buffer =
       output_gl_texture.GetFrame<GpuBuffer>();
