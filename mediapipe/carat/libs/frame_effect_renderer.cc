@@ -19,173 +19,148 @@
 #include "mediapipe/gpu/gl_base.h"
 #include "mediapipe/gpu/shader_util.h"
 #include "mediapipe/gpu/gl_simple_shaders.h"
+#include "mediapipe/gpu/gl_calculator_helper.h"
 
-namespace mediapipe {
 namespace {
 
-class Texture {
-public:
-  static absl::StatusOr<std::unique_ptr<Texture>> CreateFromImageFrame(
-      const ImageFrame& image_frame) {
-    RET_CHECK(image_frame.IsAligned(ImageFrame::kGlDefaultAlignmentBoundary))
-        << "Image frame memory must be aligned for GL usage!";
+enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
 
-    RET_CHECK(image_frame.Width() > 0 && image_frame.Height() > 0)
-        << "Image frame must have positive dimensions!";
+}
 
-    RET_CHECK(image_frame.Format() == ImageFormat::SRGB ||
-        image_frame.Format() == ImageFormat::SRGBA)
-        << "Image frame format must be either SRGB or SRGBA!";
-
-    GLint image_format;
-    switch (image_frame.NumberOfChannels()) {
-      case 3:
-        image_format = GL_RGB;
-        break;
-      case 4:
-        image_format = GL_RGBA;
-        break;
-      default:
-        RET_CHECK_FAIL()
-            << "Unexpected number of channels; expected 3 or 4, got "
-            << image_frame.NumberOfChannels() << "!";
-    }
-
-    GLuint handle;
-    glGenTextures(1, &handle);
-    RET_CHECK(handle) << "Failed to initialize an OpenGL texture!";
-
-    glBindTexture(GL_TEXTURE_2D, handle);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, image_format, image_frame.Width(),
-        image_frame.Height(), 0, image_format, GL_UNSIGNED_BYTE,
-        image_frame.PixelData());
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    return absl::WrapUnique(new Texture(
-        handle, GL_TEXTURE_2D, image_frame.Width(), image_frame.Height(),
-        /*is_owned*/ true));
-  }
-
-  ~Texture() {
-    if (is_owned_) {
-      glDeleteProgram(handle_);
-    }
-  }
-
-  GLuint handle() const { return handle_; }
-  GLenum target() const { return target_; }
-  int width() const { return width_; }
-  int height() const { return height_; }
-
-private:
-  Texture(GLuint handle, GLenum target, int width, int height, bool is_owned)
-      : handle_(handle),
-        target_(target),
-        width_(width),
-        height_(height),
-        is_owned_(is_owned) {}
-
-  GLuint handle_;
-  GLenum target_;
-  int width_;
-  int height_;
-  bool is_owned_;
-};
-
+namespace mediapipe {
 
 class FrameEffectRendererImpl : public FrameEffectRenderer {
  public:
-  FrameEffectRendererImpl(std::unique_ptr<Texture> effect_texture)
-      : effect_texture_(std::move(effect_texture)),
+  FrameEffectRendererImpl(
+      std::unique_ptr<GpuBuffer> texture_gpu_buffer,
+      std::shared_ptr<GlCalculatorHelper> gpu_helper)
+      : texture_gpu_buffer_(std::move(texture_gpu_buffer)),
+        gpu_helper_(gpu_helper),
         identity_matrix_(Create4x4IdentityMatrix()) {
-    static const GLint kAttrLocation[NUM_ATTRIBUTES] = {
+    const GLint attr_location[NUM_ATTRIBUTES] = {
         ATTRIB_VERTEX,
         ATTRIB_TEXTURE_POSITION,
     };
-    static const GLchar* kAttrName[NUM_ATTRIBUTES] = {
+    const GLchar* attr_name[NUM_ATTRIBUTES] = {
         "position",
         "tex_coord",
     };
 
-    static const GLchar* kVertSrc = R"(
-      uniform mat4 u_matrix;
-
-      attribute vec4 position;
-      attribute vec4 tex_coord;
-
-      varying vec2 v_tex_coord;
+    const std::string vert_src = std::string(kMediaPipeVertexShaderPreamble) + R"(
+      in vec4 position;
+      in mediump vec4 tex_coord;
+      out mediump vec2 sample_coordinate;
+      uniform mat4 matrix;
 
       void main() {
-        v_tex_coord = tex_coord.xy;
-        gl_Position = u_matrix * position;
+        sample_coordinate = tex_coord.xy;
+        gl_Position = matrix * position;
       }
     )";
 
-    static const GLchar* kFragSrc = R"(
-      precision mediump float;
+    const std::string frag_src = std::string(kMediaPipeFragmentShaderPreamble) + R"(
+      DEFAULT_PRECISION(highp, float)
 
-      varying vec2 v_tex_coord;
-      uniform sampler2D texture;
+      in vec2 sample_coordinate;
+      uniform sampler2D effect_texture;
 
       void main() {
-        gl_FragColor = texture2D(texture, v_tex_coord);
+        gl_FragColor = texture2D(effect_texture, sample_coordinate);
       }
     )";
 
-    program_handle_ = 0;
-    GlhCreateProgram(kVertSrc, kFragSrc, NUM_ATTRIBUTES,
-        (const GLchar**)&kAttrName[0], kAttrLocation,
-        &program_handle_);
+    GlhCreateProgram(vert_src.c_str(), frag_src.c_str(), NUM_ATTRIBUTES,
+        &attr_name[0], attr_location,
+        &program_);
 
-    glUseProgram(program_handle_);
-    matrix_uniform_ =
-        glGetUniformLocation(program_handle_, "u_matrix");
-    texture_uniform_ = glGetUniformLocation(program_handle_, "texture");
+    glUseProgram(program_);
+    glUniform1i(glGetUniformLocation(program_, "effect_texture"), 1);
+    matrix_uniform_ = glGetUniformLocation(program_, "matrix");
+
+    // vertex storage
+    glGenBuffers(2, vbo_);
+    glGenVertexArrays(1, &vao_);
+
+    // vbo 0
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_[0]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(kBasicSquareVertices),
+        kBasicSquareVertices, GL_STATIC_DRAW);
+
+    // vbo 1
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_[1]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(kBasicTextureVertices),
+        kBasicTextureVertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
   }
 
   ~FrameEffectRendererImpl() {
-    effect_texture_.reset();
-    // todo: glHelper를 받아서 runinglcontext로 program등 없애야함.
+    if (program_) glDeleteProgram(program_);
+    if (vao_ != 0) glDeleteVertexArrays(1, &vao_);
+    glDeleteBuffers(2, vbo_);
+
+    texture_gpu_buffer_.reset();
   }
 
   absl::Status RenderEffect() {
-    glUseProgram(program_handle_);
+    GlTexture frame_texture = gpu_helper_->CreateSourceTexture(*texture_gpu_buffer_.get());
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(frame_texture.target(), frame_texture.name());
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glUseProgram(program_);
 
     glEnable(GL_BLEND);
     glBlendEquation(GL_FUNC_ADD);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
 
     glUniformMatrix4fv(matrix_uniform_, 1, GL_FALSE, identity_matrix_.data());
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(effect_texture_->target(), effect_texture_->handle());
-    glUniform1i(texture_uniform_, 1);
+    glBindVertexArray(vao_);
 
-    glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, kBasicSquareVertices);
+    // vbo 0
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_[0]);
     glEnableVertexAttribArray(ATTRIB_VERTEX);
-    glVertexAttribPointer(ATTRIB_TEXTURE_POSITION, 2, GL_FLOAT, 0, 0,
-        kBasicTextureVertices);
-    glEnableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
+    glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, nullptr);
 
+    // vbo 1
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_[1]);
+    glEnableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
+    glVertexAttribPointer(ATTRIB_TEXTURE_POSITION, 2, GL_FLOAT, 0, 0, nullptr);
+
+    // draw
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(effect_texture_->target(), 0);
+    // cleanup
+    glDisableVertexAttribArray(ATTRIB_VERTEX);
+    glDisableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(frame_texture.target(), 0);
+
+    glDepthMask(GL_FALSE);
+    glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
 
+    glUseProgram(0);
     glFlush();
+
+    frame_texture.Release();
 
     return absl::OkStatus();
   }
 
  private:
-  enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
-
   static std::array<float, 16> Create4x4IdentityMatrix() {
     return {1.f, 0.f, 0.f, 0.f,  //
             0.f, 1.f, 0.f, 0.f,  //
@@ -193,23 +168,22 @@ class FrameEffectRendererImpl : public FrameEffectRenderer {
             0.f, 0.f, 0.f, 1.f};
   }
 
-  GLuint program_handle_;
+  GLuint program_ = 0;
+  GLuint vao_ = 0;
+  GLuint vbo_[2] = {0, 0};
   GLint matrix_uniform_;
-  GLint texture_uniform_;
 
-  std::unique_ptr<Texture> effect_texture_;
   std::array<float, 16> identity_matrix_;
+
+  std::unique_ptr<GpuBuffer> texture_gpu_buffer_;
+  std::shared_ptr<GlCalculatorHelper> gpu_helper_;
 };
 
-}  // namespace
-
-absl::StatusOr<std::unique_ptr<FrameEffectRenderer>> CreateFrameEffectRenderer(ImageFrame&& effect_texture) {
-  ASSIGN_OR_RETURN(std::unique_ptr<Texture> effect_gl_texture,
-                   Texture::CreateFromImageFrame(effect_texture),
-                   _ << "Failed to create an effect texture!");
-
+absl::StatusOr<std::unique_ptr<FrameEffectRenderer>> CreateFrameEffectRenderer(
+    std::unique_ptr<GpuBuffer> texture_gpu_buffer,
+    std::shared_ptr<GlCalculatorHelper> gpu_helper) {
   std::unique_ptr<FrameEffectRenderer> result =
-      absl::make_unique<FrameEffectRendererImpl>(std::move(effect_gl_texture));
+      absl::make_unique<FrameEffectRendererImpl>(std::move(texture_gpu_buffer), gpu_helper);
 
   return result;
 }

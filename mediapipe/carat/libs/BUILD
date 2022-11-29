@@ -18,6 +18,7 @@ cc_library(
         "//mediapipe/gpu:shader_util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
+        "//mediapipe/gpu:gl_calculator_helper",
     ],
 )
 

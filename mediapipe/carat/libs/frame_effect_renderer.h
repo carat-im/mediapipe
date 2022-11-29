@@ -9,6 +9,7 @@
 #include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/gpu/gl_base.h"
+#include "mediapipe/gpu/gl_calculator_helper.h"
 
 namespace mediapipe {
 
@@ -21,7 +22,9 @@ class FrameEffectRenderer {
 };
 
 // Must be called in the same GL context as will be used for rendering.
-absl::StatusOr<std::unique_ptr<FrameEffectRenderer>> CreateFrameEffectRenderer(ImageFrame&& effect_texture);
+absl::StatusOr<std::unique_ptr<FrameEffectRenderer>> CreateFrameEffectRenderer(
+    std::unique_ptr<GpuBuffer> texture_gpu_buffer,
+    std::shared_ptr<GlCalculatorHelper> gpu_helper);
 
 }  // namespace mediapipe
 

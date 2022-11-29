@@ -27,42 +27,51 @@
 #include "mediapipe/framework/port/opencv_imgcodecs_inc.h"  // NOTYPO
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"    // NOTYPO
 
+namespace {
+
 enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
+
+constexpr char kImageGpuTag[] = "IMAGE_GPU";
+constexpr char kCaratFrameEffectListTag[] = "CARAT_FRAME_EFFECT_LIST";
+
+}
 
 namespace mediapipe {
 
-static constexpr char kImageGpuTag[] = "IMAGE_GPU";
-static constexpr char kCaratFrameEffectListTag[] = "CARAT_FRAME_EFFECT_LIST";
-
 class CaratFrameEffectRendererCalculator : public CalculatorBase {
- public:
-  CaratFrameEffectRendererCalculator() {}
-  ~CaratFrameEffectRendererCalculator();
+  public:
+  CaratFrameEffectRendererCalculator() = default;
+  ~CaratFrameEffectRendererCalculator() override = default;
 
   static absl::Status GetContract(CalculatorContract* cc);
 
   absl::Status Open(CalculatorContext* cc) override;
   absl::Status Process(CalculatorContext* cc) override;
+  absl::Status Close(CalculatorContext* cc) override;
 
-  absl::Status GlSetup();
-  absl::Status GlRender();
+  private:
+  absl::Status InitGpu(CalculatorContext* cc);
+  absl::Status RenderGpu(CalculatorContext* cc);
 
- private:
-  static absl::StatusOr<ImageFrame> ReadTextureFromFile(const std::string& texture_path);
+  static absl::StatusOr<std::shared_ptr<ImageFrame>> ReadTextureFromFileAsPng(const std::string& texture_path);
   static absl::StatusOr<std::string> ReadContentBlobFromFile(const std::string& unresolved_path);
 
-  GlCalculatorHelper helper_;
-  bool initialized_ = false;
+  std::shared_ptr<GlCalculatorHelper> gpu_helper_;
   GLuint program_ = 0;
+  GLuint vao_ = 0;
+  GLuint vbo_[2] = {0, 0};
+  bool initialized_ = false;
 
   std::vector<std::unique_ptr<FrameEffectRenderer>> effect_renderers_;
   int current_effect_list_hash_ = -1;
 };
+
 REGISTER_CALCULATOR(CaratFrameEffectRendererCalculator);
 
 // static
 absl::Status CaratFrameEffectRendererCalculator::GetContract(CalculatorContract* cc) {
-  MP_RETURN_IF_ERROR(GlCalculatorHelper::UpdateContract(cc));
+  MP_RETURN_IF_ERROR(GlCalculatorHelper::UpdateContract(cc))
+      << "Failed to update contract for the GPU helper!";
 
   cc->Inputs().Tag(kImageGpuTag).Set<GpuBuffer>();
   cc->Inputs().Tag(kCaratFrameEffectListTag).Set<CaratFrameEffectList>();
@@ -74,7 +83,8 @@ absl::Status CaratFrameEffectRendererCalculator::GetContract(CalculatorContract*
 
 absl::Status CaratFrameEffectRendererCalculator::Open(CalculatorContext* cc) {
   cc->SetOffset(TimestampDiff(0));
-  return helper_.Open(cc);
+  gpu_helper_ = std::make_shared<GlCalculatorHelper>();
+  return gpu_helper_->Open(cc);
 }
 
 absl::Status CaratFrameEffectRendererCalculator::Process(CalculatorContext* cc) {
@@ -82,90 +92,39 @@ absl::Status CaratFrameEffectRendererCalculator::Process(CalculatorContext* cc) 
     return absl::OkStatus();
   }
 
-  return helper_.RunInGlContext([this, &cc]() -> absl::Status {
+  return gpu_helper_->RunInGlContext([this, &cc]() -> absl::Status {
     if (!initialized_) {
-      MP_RETURN_IF_ERROR(GlSetup());
+      MP_RETURN_IF_ERROR(InitGpu(cc));
       initialized_ = true;
     }
 
-    const CaratFrameEffectList& effect_list = cc->Inputs().Tag(kCaratFrameEffectListTag).Get<CaratFrameEffectList>();
-    int hash = -1;
-    int multiplier = 1;
-    for (const auto& effect : effect_list.effect()) {
-      hash = hash + effect.id() * multiplier;
-      multiplier = multiplier * 10;
-    }
-
-    if (current_effect_list_hash_ != hash) {
-      current_effect_list_hash_ = hash;
-      for (auto& effect_renderer : effect_renderers_) {
-        effect_renderer.reset();
-      }
-      effect_renderers_.clear();
-
-      for (const auto& effect : effect_list.effect()) {
-        std::unique_ptr<FrameEffectRenderer> effect_renderer;
-
-        ASSIGN_OR_RETURN(ImageFrame effect_texture,
-            ReadTextureFromFile(effect.texture_path()),
-            _ << "Failed to read the effect texture from file!");
-
-        ASSIGN_OR_RETURN(effect_renderer,
-            CreateFrameEffectRenderer(std::move(effect_texture)),
-            _ << "Failed to create the effect renderer!");
-        effect_renderers_.push_back(std::move(effect_renderer));
-      }
-    }
-
-    glDisable(GL_BLEND);
-
-    const auto& input_gpu_buffer =
-        cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
-
-    GlTexture input_gl_texture =
-        helper_.CreateSourceTexture(input_gpu_buffer);
-
-    GlTexture output_gl_texture = helper_.CreateDestinationTexture(
-        input_gl_texture.width(), input_gl_texture.height());
-
-    helper_.BindFramebuffer(output_gl_texture);
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(input_gl_texture.target(), input_gl_texture.name());
-    glUniform1i(glGetUniformLocation(program_, "video_frame"), 1);
-
-    MP_RETURN_IF_ERROR(GlRender());
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(input_gl_texture.target(), 0);
-
-    glFlush();
-
-    for (auto& effect_renderer : effect_renderers_) {
-      effect_renderer->RenderEffect();
-    }
-
-    std::unique_ptr<GpuBuffer> output_gpu_buffer =
-        output_gl_texture.GetFrame<GpuBuffer>();
-
-    cc->Outputs()
-        .Tag(kImageGpuTag)
-        .AddPacket(mediapipe::Adopt<GpuBuffer>(output_gpu_buffer.release())
-            .At(cc->InputTimestamp()));
-
-    output_gl_texture.Release();
-    input_gl_texture.Release();
+    MP_RETURN_IF_ERROR(RenderGpu(cc));
 
     return absl::OkStatus();
   });
 }
 
-absl::Status CaratFrameEffectRendererCalculator::GlSetup() {
+absl::Status CaratFrameEffectRendererCalculator::Close(CalculatorContext* cc) {
+  return gpu_helper_->RunInGlContext([this]() -> absl::Status {
+    if (program_) glDeleteProgram(program_);
+    if (vao_ != 0) glDeleteVertexArrays(1, &vao_);
+    glDeleteBuffers(2, vbo_);
+
+    for (auto& effect_renderer : effect_renderers_) {
+      effect_renderer.reset();
+    }
+
+    return absl::OkStatus();
+  });
+}
+
+absl::Status CaratFrameEffectRendererCalculator::InitGpu(CalculatorContext *cc) {
   // Load vertex and fragment shaders
   const GLint attr_location[NUM_ATTRIBUTES] = {
       ATTRIB_VERTEX,
       ATTRIB_TEXTURE_POSITION,
   };
+  // kBasicVertexShader 에 선언되어있는 이름들. gl_simple_shaders.cc
   const GLchar* attr_name[NUM_ATTRIBUTES] = {
       "position",
       "texture_coordinate",
@@ -178,23 +137,126 @@ absl::Status CaratFrameEffectRendererCalculator::GlSetup() {
   RET_CHECK(program_) << "Problem initializing the program.";
 
   glUseProgram(program_);
+  glUniform1i(glGetUniformLocation(program_, "video_frame"), 1);
+
+  // vertex storage
+  glGenBuffers(2, vbo_);
+  glGenVertexArrays(1, &vao_);
+
+  // vbo 0
+  glBindBuffer(GL_ARRAY_BUFFER, vbo_[0]);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(kBasicSquareVertices),
+      kBasicSquareVertices, GL_STATIC_DRAW);
+
+  // vbo 1
+  glBindBuffer(GL_ARRAY_BUFFER, vbo_[1]);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(kBasicTextureVertices),
+      kBasicTextureVertices, GL_STATIC_DRAW);
+
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
   return absl::OkStatus();
 }
 
-absl::Status CaratFrameEffectRendererCalculator::GlRender() {
-  glUseProgram(program_);
-  glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, kBasicSquareVertices);
-  glEnableVertexAttribArray(ATTRIB_VERTEX);
-  glVertexAttribPointer(ATTRIB_TEXTURE_POSITION, 2, GL_FLOAT, 0, 0,
-                        kBasicTextureVertices);
-  glEnableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
+absl::Status CaratFrameEffectRendererCalculator::RenderGpu(CalculatorContext *cc) {
+  const CaratFrameEffectList& effect_list = cc->Inputs().Tag(kCaratFrameEffectListTag).Get<CaratFrameEffectList>();
+  int hash = -1;
+  int multiplier = 1;
+  for (const auto& effect : effect_list.effect()) {
+    hash = hash + effect.id() * multiplier;
+    multiplier = multiplier * 10;
+  }
 
+//  if (current_effect_list_hash_ != hash) {
+//    current_effect_list_hash_ = hash;
+//    for (auto& effect_renderer : effect_renderers_) {
+//      effect_renderer.reset();
+//    }
+//    effect_renderers_.clear();
+//
+//    for (const auto& effect : effect_list.effect()) {
+//      std::unique_ptr<FrameEffectRenderer> effect_renderer;
+//
+//      ASSIGN_OR_RETURN(std::shared_ptr<ImageFrame> image_frame,
+//          ReadTextureFromFileAsPng(effect.texture_path()),
+//          _ << "Failed to read the effect texture from file!");
+//
+//      std::unique_ptr<GpuBuffer> texture_gpu_buffer = absl::make_unique<GpuBuffer>(gpu_helper_->GpuBufferWithImageFrame(image_frame));
+//      ASSIGN_OR_RETURN(effect_renderer,
+//          CreateFrameEffectRenderer(std::move(texture_gpu_buffer), gpu_helper_),
+//          _ << "Failed to create the effect renderer!");
+//      effect_renderers_.push_back(std::move(effect_renderer));
+//    }
+//  }
+
+  const auto& input_gpu_buffer =
+      cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
+
+  GlTexture input_gl_texture =
+      gpu_helper_->CreateSourceTexture(input_gpu_buffer);
+
+  GlTexture output_gl_texture = gpu_helper_->CreateDestinationTexture(
+      input_gl_texture.width(), input_gl_texture.height());
+
+  gpu_helper_->BindFramebuffer(output_gl_texture);
+
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(input_gl_texture.target(), input_gl_texture.name());
+
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  glUseProgram(program_);
+
+  glDisable(GL_BLEND);
+
+  // vbo 0
+  glBindBuffer(GL_ARRAY_BUFFER, vbo_[0]);
+  glEnableVertexAttribArray(ATTRIB_VERTEX);
+  glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, nullptr);
+
+  // vbo 1
+  glBindBuffer(GL_ARRAY_BUFFER, vbo_[1]);
+  glEnableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
+  glVertexAttribPointer(ATTRIB_TEXTURE_POSITION, 2, GL_FLOAT, 0, 0, nullptr);
+
+  // draw
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+  // cleanup
+  glDisableVertexAttribArray(ATTRIB_VERTEX);
+  glDisableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
+
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  glFlush();
+
+//  for (auto& effect_renderer : effect_renderers_) {
+//    effect_renderer->RenderEffect();
+//  }
+
+  std::unique_ptr<GpuBuffer> output_gpu_buffer =
+      output_gl_texture.GetFrame<GpuBuffer>();
+
+  cc->Outputs()
+      .Tag(kImageGpuTag)
+      .AddPacket(mediapipe::Adopt<GpuBuffer>(output_gpu_buffer.release())
+          .At(cc->InputTimestamp()));
+
+  output_gl_texture.Release();
+  input_gl_texture.Release();
+
   return absl::OkStatus();
 }
 
 // static
-absl::StatusOr<ImageFrame> CaratFrameEffectRendererCalculator::ReadTextureFromFile(const std::string& texture_path) {
+absl::StatusOr<std::shared_ptr<ImageFrame>> CaratFrameEffectRendererCalculator::ReadTextureFromFileAsPng(
+    const std::string& texture_path) {
   ASSIGN_OR_RETURN(std::string texture_blob,
       ReadContentBlobFromFile(texture_path),
       _ << "Failed to read texture blob from file!");
@@ -213,8 +275,8 @@ absl::StatusOr<ImageFrame> CaratFrameEffectRendererCalculator::ReadTextureFromFi
   cv::Mat output_mat;
   switch (decoded_mat.channels()) {
     case 3:
-      image_format = ImageFormat::SRGB;
-      cv::cvtColor(decoded_mat, output_mat, cv::COLOR_BGR2RGB);
+      image_format = ImageFormat::SRGBA;
+      cv::cvtColor(decoded_mat, output_mat, cv::COLOR_BGR2RGBA);
       break;
 
     case 4:
@@ -228,14 +290,16 @@ absl::StatusOr<ImageFrame> CaratFrameEffectRendererCalculator::ReadTextureFromFi
           << decoded_mat.channels() << "!";
   }
 
-  ImageFrame output_image_frame(image_format, output_mat.size().width,
+  std::shared_ptr<ImageFrame> result = std::make_shared<ImageFrame>(image_format,
+      output_mat.size().width,
       output_mat.size().height,
       ImageFrame::kGlDefaultAlignmentBoundary);
 
-  output_mat.copyTo(formats::MatView(&output_image_frame));
+  output_mat.copyTo(formats::MatView(result.get()));
 
-  return output_image_frame;
+  return result;
 }
+
 
 // static
 absl::StatusOr<std::string> CaratFrameEffectRendererCalculator::ReadContentBlobFromFile(const std::string& unresolved_path) {
@@ -249,19 +313,6 @@ absl::StatusOr<std::string> CaratFrameEffectRendererCalculator::ReadContentBlobF
       << "Failed to read content blob! Resolved path = " << resolved_path;
 
   return content_blob;
-}
-
-CaratFrameEffectRendererCalculator::~CaratFrameEffectRendererCalculator() {
-  helper_.RunInGlContext([this] {
-    if (program_) {
-      glDeleteProgram(program_);
-      program_ = 0;
-    }
-
-    for (auto& effect_renderer : effect_renderers_) {
-      effect_renderer.reset();
-    }
-  });
 }
 
 }  // namespace mediapipe
