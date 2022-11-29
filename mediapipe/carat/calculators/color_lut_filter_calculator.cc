@@ -31,79 +31,6 @@ constexpr char kColorLutTag[] = "COLOR_LUT";
 
 namespace mediapipe {
 
-class Texture {
- public:
-  static absl::StatusOr<std::unique_ptr<Texture>> CreateFromImageFrame(
-      const ImageFrame& image_frame) {
-    RET_CHECK(image_frame.IsAligned(ImageFrame::kGlDefaultAlignmentBoundary))
-        << "Image frame memory must be aligned for GL usage!";
-
-    RET_CHECK(image_frame.Width() > 0 && image_frame.Height() > 0)
-        << "Image frame must have positive dimensions!";
-
-    RET_CHECK(image_frame.Format() == ImageFormat::SRGB ||
-        image_frame.Format() == ImageFormat::SRGBA)
-        << "Image frame format must be either SRGB or SRGBA!";
-
-    GLint image_format;
-    switch (image_frame.NumberOfChannels()) {
-      case 3:
-        image_format = GL_RGB;
-        break;
-      case 4:
-        image_format = GL_RGBA;
-        break;
-      default:
-        RET_CHECK_FAIL()
-            << "Unexpected number of channels; expected 3 or 4, got "
-            << image_frame.NumberOfChannels() << "!";
-    }
-
-    GLuint handle;
-    glGenTextures(1, &handle);
-    RET_CHECK(handle) << "Failed to initialize an OpenGL texture!";
-
-    glBindTexture(GL_TEXTURE_2D, handle);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, image_format, image_frame.Width(),
-        image_frame.Height(), 0, image_format, GL_UNSIGNED_BYTE,
-        image_frame.PixelData());
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    return absl::WrapUnique(new Texture(
-        handle, GL_TEXTURE_2D, image_frame.Width(), image_frame.Height(),
-        /*is_owned*/ true));
-  }
-
-  ~Texture() {
-    if (is_owned_) {
-      glDeleteProgram(handle_);
-    }
-  }
-
-  GLuint handle() const { return handle_; }
-  GLenum target() const { return target_; }
-  int width() const { return width_; }
-  int height() const { return height_; }
-
- private:
-  Texture(GLuint handle, GLenum target, int width, int height, bool is_owned)
-      : handle_(handle),
-        target_(target),
-        width_(width),
-        height_(height),
-        is_owned_(is_owned) {}
-
-  GLuint handle_;
-  GLenum target_;
-  int width_;
-  int height_;
-  bool is_owned_;
-};
-
 class ColorLutFilterCalculator : public CalculatorBase {
  public:
   ColorLutFilterCalculator() = default;
@@ -118,20 +45,25 @@ class ColorLutFilterCalculator : public CalculatorBase {
  private:
   absl::Status InitGpu(CalculatorContext* cc);
   absl::Status RenderGpu(CalculatorContext* cc);
-  void GlRender();
 
-  static absl::StatusOr<ImageFrame> ReadTextureFromFile(const std::string& texture_path);
+  static absl::StatusOr<std::shared_ptr<ImageFrame>> ReadTextureFromFileAsPng(const std::string& texture_path);
   static absl::StatusOr<std::string> ReadContentBlobFromFile(const std::string& unresolved_path);
 
   mediapipe::GlCalculatorHelper gpu_helper_;
   GLuint program_ = 0;
+  GLuint vao_ = 0;
+  GLuint vbo_[2] = {0, 0};
   bool initialized_ = false;
 
   std::string current_lut_path_;
-  std::unique_ptr<Texture> lut_texture_;
   float intensity_;
   float grain_;
   float vignette_;
+
+  // gl_calculator_helper.h 의 CreateSourceTexture에 따르면,
+  // 특정 frame을 유지하면서 재사용하고 싶을 땐 GpuBuffer를 전역 변수로 유지시키고,
+  // GlTexture가 필요할때마다 CreateSourceTexture를 사용하는게 좋다고 한다.
+  std::unique_ptr<GpuBuffer> lut_gpu_buffer_;
 };
 
 REGISTER_CALCULATOR(ColorLutFilterCalculator);
@@ -151,11 +83,7 @@ absl::Status ColorLutFilterCalculator::GetContract(CalculatorContract* cc) {
 
 absl::Status ColorLutFilterCalculator::Open(CalculatorContext* cc) {
   cc->SetOffset(mediapipe::TimestampDiff(0));
-
-  MP_RETURN_IF_ERROR(gpu_helper_.Open(cc))
-      << "Failed to open the GPU helper!";
-
-  return absl::OkStatus();
+  return gpu_helper_.Open(cc);
 }
 
 absl::Status ColorLutFilterCalculator::Process(CalculatorContext* cc) {
@@ -166,27 +94,28 @@ absl::Status ColorLutFilterCalculator::Process(CalculatorContext* cc) {
     return absl::OkStatus();
   }
 
-  MP_RETURN_IF_ERROR(
-      gpu_helper_.RunInGlContext([this, &cc]() -> absl::Status {
-          if (!initialized_) {
-            MP_RETURN_IF_ERROR(InitGpu(cc));
-            initialized_ = true;
-          }
-          MP_RETURN_IF_ERROR(RenderGpu(cc));
-          return absl::OkStatus();
-      }));
+  return gpu_helper_.RunInGlContext([this, &cc]() -> absl::Status {
+      if (!initialized_) {
+        MP_RETURN_IF_ERROR(InitGpu(cc));
+        initialized_ = true;
+      }
 
-  return absl::OkStatus();
+      MP_RETURN_IF_ERROR(RenderGpu(cc));
+
+      return absl::OkStatus();
+  });
 }
 
 absl::Status ColorLutFilterCalculator::Close(CalculatorContext* cc) {
-  gpu_helper_.RunInGlContext([this] {
+  return gpu_helper_.RunInGlContext([this]() -> absl::Status {
       if (program_) glDeleteProgram(program_);
-      program_ = 0;
+      if (vao_ != 0) glDeleteVertexArrays(1, &vao_);
+      glDeleteBuffers(2, vbo_);
 
-      lut_texture_.reset();
+      lut_gpu_buffer_.reset();
+
+      return absl::OkStatus();
   });
-  return absl::OkStatus();
 }
 
 absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
@@ -194,6 +123,7 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       ATTRIB_VERTEX,
       ATTRIB_TEXTURE_POSITION,
   };
+  // kBasicVertexShader 에 선언되어있는 이름들. gl_simple_shaders.cc
   const GLchar* attr_name[NUM_ATTRIBUTES] = {
       "position",
       "texture_coordinate",
@@ -280,14 +210,33 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
   )";
 
   // shader program and params
-  mediapipe::GlhCreateProgram(mediapipe::kBasicVertexShader, frag_src.c_str(),
+  GlhCreateProgram(kBasicVertexShader, frag_src.c_str(),
       NUM_ATTRIBUTES, &attr_name[0], attr_location,
       &program_);
   RET_CHECK(program_) << "Problem initializing the program.";
 
   glUseProgram(program_);
+  // frame 은 GL_TEXTURE1 에, lut_texture 는 GL_TEXTURE2 에 바인딩 될것임.
+  // 내 기억으로, GL_TEXTURE0 은 outputTexture로, 그 외에는 1, 2씩 증가하는 식으로 하는게 practice 임.
+  // 참고: gl_simple_calculator.h 의 GlRender.
   glUniform1i(glGetUniformLocation(program_, "frame"), 1);
   glUniform1i(glGetUniformLocation(program_, "lut_texture"), 2);
+
+  // vertex storage
+  glGenBuffers(2, vbo_);
+  glGenVertexArrays(1, &vao_);
+
+  // vbo 0
+  glBindBuffer(GL_ARRAY_BUFFER, vbo_[0]);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(kBasicSquareVertices),
+      kBasicSquareVertices, GL_STATIC_DRAW);
+
+  // vbo 1
+  glBindBuffer(GL_ARRAY_BUFFER, vbo_[1]);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(kBasicTextureVertices),
+      kBasicTextureVertices, GL_STATIC_DRAW);
+
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
 
   return absl::OkStatus();
 }
@@ -299,27 +248,25 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
     const auto& new_lut_path = color_lut.lut_path();
     if (current_lut_path_ != new_lut_path) {
       current_lut_path_ = new_lut_path;
-      lut_texture_.reset();
+      lut_gpu_buffer_.reset();
 
-      ASSIGN_OR_RETURN(ImageFrame lut_texture_frame,
-          ReadTextureFromFile(current_lut_path_),
+      ASSIGN_OR_RETURN(std::shared_ptr<ImageFrame> lut_image_frame,
+          ReadTextureFromFileAsPng(current_lut_path_),
           _ << "Failed to read the lut texture from file!");
-      ASSIGN_OR_RETURN(lut_texture_,
-          Texture::CreateFromImageFrame(lut_texture_frame),
-          _ << "Failed to create an lut gl texture!");
+
+      lut_gpu_buffer_ = absl::make_unique<GpuBuffer>(gpu_helper_.GpuBufferWithImageFrame(lut_image_frame));
     }
   } else {
     current_lut_path_ = "";
-    lut_texture_.reset();
+    lut_gpu_buffer_.reset();
   }
 
   const auto& input_gpu_buffer =
       cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
-
   GlTexture input_gl_texture =
       gpu_helper_.CreateSourceTexture(input_gpu_buffer);
 
-  if (lut_texture_ == nullptr) {
+  if (lut_gpu_buffer_ == nullptr) {
     std::unique_ptr<GpuBuffer> output_gpu_buffer =
         input_gl_texture.GetFrame<GpuBuffer>();
 
@@ -337,24 +284,58 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
   grain_ = color_lut.grain();
   vignette_ = color_lut.vignette();
 
+  GlTexture lut_gl_texture = gpu_helper_.CreateSourceTexture(*lut_gpu_buffer_.get());
+
   GlTexture output_gl_texture = gpu_helper_.CreateDestinationTexture(
       input_gl_texture.width(), input_gl_texture.height());
 
   // Run shader on GPU.
   {
+    // 이 함수 내에서 glViewport 까지 처리해줌.
     gpu_helper_.BindFramebuffer(output_gl_texture);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(input_gl_texture.target(), input_gl_texture.name());
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(lut_texture_->target(), lut_texture_->handle());
+    glBindTexture(lut_gl_texture.target(), lut_gl_texture.name());
 
-    GlRender();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glUseProgram(program_);
+
+    glUniform1f(glGetUniformLocation(program_, "intensity"), intensity_);
+    glUniform1f(glGetUniformLocation(program_, "grain"), grain_);
+    glUniform1f(glGetUniformLocation(program_, "vignette"), vignette_);
+
+    glBindVertexArray(vao_);
+
+    // vbo 0
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_[0]);
+    glEnableVertexAttribArray(ATTRIB_VERTEX);
+    glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, nullptr);
+
+    // vbo 1
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_[1]);
+    glEnableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
+    glVertexAttribPointer(ATTRIB_TEXTURE_POSITION, 2, GL_FLOAT, 0, 0, nullptr);
+
+    // draw
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    // cleanup
+    glDisableVertexAttribArray(ATTRIB_VERTEX);
+    glDisableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, 0);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, 0);
+
     glFlush();
   }
 
@@ -368,66 +349,15 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
 
   output_gl_texture.Release();
   input_gl_texture.Release();
+  lut_gl_texture.Release();
 
   return absl::OkStatus();
 }
 
-void ColorLutFilterCalculator::GlRender() {
-  static const GLfloat square_vertices[] = {
-      -1.0f, -1.0f,  // bottom left
-      1.0f,  -1.0f,  // bottom right
-      -1.0f, 1.0f,   // top left
-      1.0f,  1.0f,   // top right
-  };
-  static const GLfloat texture_vertices[] = {
-      0.0f, 0.0f,  // bottom left
-      1.0f, 0.0f,  // bottom right
-      0.0f, 1.0f,  // top left
-      1.0f, 1.0f,  // top right
-  };
-
-  // program
-  glUseProgram(program_);
-
-  glUniform1f(glGetUniformLocation(program_, "intensity"), intensity_);
-  glUniform1f(glGetUniformLocation(program_, "grain"), grain_);
-  glUniform1f(glGetUniformLocation(program_, "vignette"), vignette_);
-
-  // vertex storage
-  GLuint vbo[2];
-  glGenBuffers(2, vbo);
-  GLuint vao;
-  glGenVertexArrays(1, &vao);
-  glBindVertexArray(vao);
-
-  // vbo 0
-  glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
-  glBufferData(GL_ARRAY_BUFFER, 4 * 2 * sizeof(GLfloat), square_vertices,
-      GL_STATIC_DRAW);
-  glEnableVertexAttribArray(ATTRIB_VERTEX);
-  glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, nullptr);
-
-  // vbo 1
-  glBindBuffer(GL_ARRAY_BUFFER, vbo[1]);
-  glBufferData(GL_ARRAY_BUFFER, 4 * 2 * sizeof(GLfloat), texture_vertices,
-      GL_STATIC_DRAW);
-  glEnableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
-  glVertexAttribPointer(ATTRIB_TEXTURE_POSITION, 2, GL_FLOAT, 0, 0, nullptr);
-
-  // draw
-  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-  // cleanup
-  glDisableVertexAttribArray(ATTRIB_VERTEX);
-  glDisableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  glBindVertexArray(0);
-  glDeleteVertexArrays(1, &vao);
-  glDeleteBuffers(2, vbo);
-}
-
+// 3 channel (jpg)가 아닌 4 channel (png)로 변환해서 가져와야함.
+// 그래야 CVPixelBuffer로 전환할 때 문제가 생기지 않음.
 // static
-absl::StatusOr<ImageFrame> ColorLutFilterCalculator::ReadTextureFromFile(
+absl::StatusOr<std::shared_ptr<ImageFrame>> ColorLutFilterCalculator::ReadTextureFromFileAsPng(
     const std::string& texture_path) {
   ASSIGN_OR_RETURN(std::string texture_blob,
       ReadContentBlobFromFile(texture_path),
@@ -447,8 +377,8 @@ absl::StatusOr<ImageFrame> ColorLutFilterCalculator::ReadTextureFromFile(
   cv::Mat output_mat;
   switch (decoded_mat.channels()) {
     case 3:
-      image_format = ImageFormat::SRGB;
-      cv::cvtColor(decoded_mat, output_mat, cv::COLOR_BGR2RGB);
+      image_format = ImageFormat::SRGBA;
+      cv::cvtColor(decoded_mat, output_mat, cv::COLOR_BGR2RGBA);
       break;
 
     case 4:
@@ -462,13 +392,14 @@ absl::StatusOr<ImageFrame> ColorLutFilterCalculator::ReadTextureFromFile(
           << decoded_mat.channels() << "!";
   }
 
-  ImageFrame output_image_frame(image_format, output_mat.size().width,
+  std::shared_ptr<ImageFrame> result = std::make_shared<ImageFrame>(image_format,
+      output_mat.size().width,
       output_mat.size().height,
       ImageFrame::kGlDefaultAlignmentBoundary);
 
-  output_mat.copyTo(formats::MatView(&output_image_frame));
+  output_mat.copyTo(formats::MatView(result.get()));
 
-  return output_image_frame;
+  return result;
 }
 
 // static

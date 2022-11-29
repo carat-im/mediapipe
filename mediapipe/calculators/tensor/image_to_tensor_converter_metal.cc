@@ -77,7 +77,7 @@ constexpr char kShaderLibHeader[] = R"(
 constexpr char kVertexShader[] = R"(
   vertex TextureVertex vertexShader(
       constant float4 *position [[buffer(0)]],
-      device float4* tex_coords [[buffer(1)]],
+      constant float4 *tex_coords [[buffer(1)]],
       constant float4x4& transform_matrix [[buffer(2)]],
       uint vid [[vertex_id]]) {
     TextureVertex vert;

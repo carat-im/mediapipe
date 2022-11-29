@@ -1236,9 +1236,6 @@ kernel void scoreKernel(
     uint2                     gid          [[ thread_position_in_grid ]]) {
 
   uint num_classes = uint($0);
-  int apply_sigmoid = int($1);
-  int apply_clipping_thresh = int($2);
-  float clipping_thresh = float($3);
   int ignore_class_0 = int($4);
 
   uint g_idx = gid.x;   // box idx
