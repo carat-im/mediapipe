@@ -159,6 +159,9 @@ absl::Status CaratFrameEffectRendererCalculator::InitGpu(CalculatorContext *cc) 
 }
 
 absl::Status CaratFrameEffectRendererCalculator::RenderGpu(CalculatorContext *cc) {
+  const auto& input_gpu_buffer = cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
+  GlTexture input_gl_texture = gpu_helper_->CreateSourceTexture(input_gpu_buffer);
+
   const CaratFrameEffectList& effect_list = cc->Inputs().Tag(kCaratFrameEffectListTag).Get<CaratFrameEffectList>();
   int hash = -1;
   int multiplier = 1;
@@ -183,17 +186,12 @@ absl::Status CaratFrameEffectRendererCalculator::RenderGpu(CalculatorContext *cc
 
       std::unique_ptr<GpuBuffer> texture_gpu_buffer = absl::make_unique<GpuBuffer>(gpu_helper_->GpuBufferWithImageFrame(image_frame));
       ASSIGN_OR_RETURN(effect_renderer,
-          CreateFrameEffectRenderer(std::move(texture_gpu_buffer), gpu_helper_),
+          CreateFrameEffectRenderer(std::move(texture_gpu_buffer), gpu_helper_,
+              input_gl_texture.width(), input_gl_texture.height()),
           _ << "Failed to create the effect renderer!");
       effect_renderers_.push_back(std::move(effect_renderer));
     }
   }
-
-  const auto& input_gpu_buffer =
-      cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
-
-  GlTexture input_gl_texture =
-      gpu_helper_->CreateSourceTexture(input_gpu_buffer);
 
   GlTexture output_gl_texture = gpu_helper_->CreateDestinationTexture(
       input_gl_texture.width(), input_gl_texture.height());

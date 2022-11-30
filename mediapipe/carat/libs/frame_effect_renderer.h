@@ -24,7 +24,8 @@ class FrameEffectRenderer {
 // Must be called in the same GL context as will be used for rendering.
 absl::StatusOr<std::unique_ptr<FrameEffectRenderer>> CreateFrameEffectRenderer(
     std::unique_ptr<GpuBuffer> texture_gpu_buffer,
-    std::shared_ptr<GlCalculatorHelper> gpu_helper);
+    std::shared_ptr<GlCalculatorHelper> gpu_helper,
+    int width, int height);
 
 }  // namespace mediapipe
 

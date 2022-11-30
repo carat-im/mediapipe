@@ -33,10 +33,13 @@ class FrameEffectRendererImpl : public FrameEffectRenderer {
  public:
   FrameEffectRendererImpl(
       std::unique_ptr<GpuBuffer> texture_gpu_buffer,
-      std::shared_ptr<GlCalculatorHelper> gpu_helper)
+      std::shared_ptr<GlCalculatorHelper> gpu_helper,
+      int width, int height)
       : texture_gpu_buffer_(std::move(texture_gpu_buffer)),
         gpu_helper_(gpu_helper),
-        identity_matrix_(Create4x4IdentityMatrix()) {
+        transform_matrix_(Create4x4IdentityMatrix()),
+        width_(width),
+        height_(height) {
     const GLint attr_location[NUM_ATTRIBUTES] = {
         ATTRIB_VERTEX,
         ATTRIB_TEXTURE_POSITION,
@@ -120,7 +123,9 @@ class FrameEffectRendererImpl : public FrameEffectRenderer {
     glBlendEquation(GL_FUNC_ADD);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glUniformMatrix4fv(matrix_uniform_, 1, GL_FALSE, identity_matrix_.data());
+    auto target_width = height_ * 9.0 / 16.0;
+    transform_matrix_[0] = target_width / width_;
+    glUniformMatrix4fv(matrix_uniform_, 1, GL_FALSE, transform_matrix_.data());
 
     glBindVertexArray(vao_);
 
@@ -158,9 +163,9 @@ class FrameEffectRendererImpl : public FrameEffectRenderer {
 
  private:
   static std::array<float, 16> Create4x4IdentityMatrix() {
-    return {1.f, 0.f, 0.f, 0.f,  //
-            0.f, 1.f, 0.f, 0.f,  //
-            0.f, 0.f, 1.f, 0.f,  //
+    return {1.f, 0.f, 0.f, 0.f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
             0.f, 0.f, 0.f, 1.f};
   }
 
@@ -169,17 +174,21 @@ class FrameEffectRendererImpl : public FrameEffectRenderer {
   GLuint vbo_[2] = {0, 0};
   GLint matrix_uniform_;
 
-  std::array<float, 16> identity_matrix_;
+  std::array<float, 16> transform_matrix_;
 
   std::unique_ptr<GpuBuffer> texture_gpu_buffer_;
   std::shared_ptr<GlCalculatorHelper> gpu_helper_;
+
+  int width_ = 0;
+  int height_ = 0;
 };
 
 absl::StatusOr<std::unique_ptr<FrameEffectRenderer>> CreateFrameEffectRenderer(
     std::unique_ptr<GpuBuffer> texture_gpu_buffer,
-    std::shared_ptr<GlCalculatorHelper> gpu_helper) {
+    std::shared_ptr<GlCalculatorHelper> gpu_helper,
+    int width, int height) {
   std::unique_ptr<FrameEffectRenderer> result =
-      absl::make_unique<FrameEffectRendererImpl>(std::move(texture_gpu_buffer), gpu_helper);
+      absl::make_unique<FrameEffectRendererImpl>(std::move(texture_gpu_buffer), gpu_helper, width, height);
 
   return result;
 }
