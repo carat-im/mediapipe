@@ -275,7 +275,7 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
   GlTexture lut_gl_texture = gpu_helper_.CreateSourceTexture(*lut_gpu_buffer_.get());
 
   GlTexture output_gl_texture = gpu_helper_.CreateDestinationTexture(
-      input_gl_texture.width(), input_gl_texture.height());
+      input_gl_texture.width(), input_gl_texture.height(), input_gpu_buffer.format());
 
   // Run shader on GPU.
   {

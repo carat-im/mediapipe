@@ -26,6 +26,8 @@
 #include "mediapipe/modules/face_geometry/protos/environment.pb.h"
 #include "mediapipe/modules/face_geometry/protos/face_geometry.pb.h"
 #include "mediapipe/modules/face_geometry/protos/mesh_3d.pb.h"
+#include "mediapipe/gpu/gl_simple_shaders.h"
+#include "mediapipe/gpu/gl_calculator_helper.h"
 
 namespace mediapipe::face_geometry {
 
@@ -49,6 +51,13 @@ class EffectRenderer {
   // reference existing OpenGL textures in the current context. They should also
   // reference different textures as the in-place effect rendering is not yet
   // supported.
+  virtual absl::Status RenderEffect2(
+      const std::vector<FaceGeometry>& multi_face_geometry,
+      int frame_width,
+      int frame_height,
+      GlTexture src_texture,
+      GlTexture dst_texture) = 0;
+
   virtual absl::Status RenderEffect(
       const std::vector<FaceGeometry>& multi_face_geometry,
       int frame_width,            //
@@ -82,6 +91,13 @@ class EffectRenderer {
 //
 // `effect_texture` must have positive dimensions. Its format must be either
 // `SRGB` or `SRGBA`. Its memory must be aligned for GL usage.
+absl::StatusOr<std::unique_ptr<EffectRenderer>> CreateEffectRenderer2(
+    const Environment& environment,                //
+    const absl::optional<Mesh3d>& effect_mesh_3d,  //
+    std::unique_ptr<GpuBuffer> empty_color_gl_texture_gpu_buffer,
+    std::unique_ptr<GpuBuffer> effect_texture_gpu_buffer,
+    std::shared_ptr<GlCalculatorHelper> gpu_helper);
+
 absl::StatusOr<std::unique_ptr<EffectRenderer>> CreateEffectRenderer(
     const Environment& environment,                //
     const absl::optional<Mesh3d>& effect_mesh_3d,  //

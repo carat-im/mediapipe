@@ -37,6 +37,8 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
         "//mediapipe/gpu:gl_simple_shaders",
+        "//mediapipe/carat/libs:gl_errors",
+        "//mediapipe/gpu:gl_calculator_helper",
     ],
 )
 

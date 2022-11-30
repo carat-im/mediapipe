@@ -60,11 +60,12 @@ class CaratFaceEffectRendererCalculator : public CalculatorBase {
   absl::Status Close(CalculatorContext* cc) override;
 
   private:
-  static absl::StatusOr<ImageFrame> ReadTextureFromFile(const std::string& texture_path);
+  static absl::StatusOr<std::shared_ptr<ImageFrame>> ReadTextureFromFileAsPng(const std::string& texture_path);
   static absl::StatusOr<face_geometry::Mesh3d> ReadMesh3dFromFile(const std::string& mesh_3d_path);
   static absl::StatusOr<std::string> ReadContentBlobFromFile(const std::string& unresolved_path);
+  static ImageFrame CreateEmptyColorTexture();
 
-  mediapipe::GlCalculatorHelper gpu_helper_;
+  std::shared_ptr<GlCalculatorHelper> gpu_helper_;
   std::vector<std::unique_ptr<face_geometry::EffectRenderer>> effect_renderers_;
   int current_effect_list_hash_ = -1;
 };
@@ -93,7 +94,8 @@ absl::Status CaratFaceEffectRendererCalculator::GetContract(CalculatorContract* 
 
 absl::Status CaratFaceEffectRendererCalculator::Open(CalculatorContext* cc) {
   cc->SetOffset(mediapipe::TimestampDiff(0));
-  return gpu_helper_.Open(cc);
+  gpu_helper_ = std::make_shared<GlCalculatorHelper>();
+  return gpu_helper_->Open(cc);
 }
 
 absl::Status CaratFaceEffectRendererCalculator::Process(CalculatorContext* cc) {
@@ -104,7 +106,7 @@ absl::Status CaratFaceEffectRendererCalculator::Process(CalculatorContext* cc) {
     return absl::OkStatus();
   }
 
-  return gpu_helper_.RunInGlContext([this, cc]() -> absl::Status {
+  return gpu_helper_->RunInGlContext([this, cc]() -> absl::Status {
     const CaratFaceEffectList& effect_list = cc->Inputs().Tag(kCaratFaceEffectListTag).Get<CaratFaceEffectList>();
     int hash = -1;
     int multiplier = 1;
@@ -140,13 +142,17 @@ absl::Status CaratFaceEffectRendererCalculator::Process(CalculatorContext* cc) {
               << "Invalid effect 3D mesh!";
         }
 
-        ASSIGN_OR_RETURN(ImageFrame effect_texture,
-            ReadTextureFromFile(effect.texture_path()),
+        ASSIGN_OR_RETURN(std::shared_ptr<ImageFrame> effect_texture_frame,
+            ReadTextureFromFileAsPng(effect.texture_path()),
             _ << "Failed to read the effect texture from file!");
+        std::shared_ptr<ImageFrame> empty_color_gl_texture_frame = std::make_shared<ImageFrame>(CreateEmptyColorTexture());
+
+        std::unique_ptr<GpuBuffer> effect_texture_gpu_buffer = absl::make_unique<GpuBuffer>(gpu_helper_->GpuBufferWithImageFrame(effect_texture_frame));
+        std::unique_ptr<GpuBuffer> empty_color_gl_texture_gpu_buffer = absl::make_unique<GpuBuffer>(gpu_helper_->GpuBufferWithImageFrame(empty_color_gl_texture_frame));
 
         ASSIGN_OR_RETURN(effect_renderer,
-            CreateEffectRenderer(environment, effect_mesh_3d,
-                std::move(effect_texture)),
+            CreateEffectRenderer2(environment, effect_mesh_3d,
+                std::move(empty_color_gl_texture_gpu_buffer), std::move(effect_texture_gpu_buffer), gpu_helper_),
             _ << "Failed to create the effect renderer!");
         effect_renderers_.push_back(std::move(effect_renderer));
       }
@@ -156,7 +162,7 @@ absl::Status CaratFaceEffectRendererCalculator::Process(CalculatorContext* cc) {
         cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
 
     GlTexture input_gl_texture =
-        gpu_helper_.CreateSourceTexture(input_gpu_buffer);
+        gpu_helper_->CreateSourceTexture(input_gpu_buffer);
 
     if (effect_renderers_.size() == 0) {
       std::unique_ptr<GpuBuffer> output_gpu_buffer =
@@ -187,23 +193,22 @@ absl::Status CaratFaceEffectRendererCalculator::Process(CalculatorContext* cc) {
           << "Invalid face geometry!";
     }
 
-    GlTexture output_gl_texture = gpu_helper_.CreateDestinationTexture(
-        input_gl_texture.width(), input_gl_texture.height());
+    GlTexture output_gl_texture = gpu_helper_->CreateDestinationTexture(
+        input_gl_texture.width(), input_gl_texture.height(), input_gpu_buffer.format());
 
     bool is_first_renderer = true;
     for (auto& effect_renderer : effect_renderers_) {
       if (!is_first_renderer) {
         input_gl_texture.Release();
         input_gl_texture = output_gl_texture;
-        output_gl_texture = gpu_helper_.CreateDestinationTexture(
-            input_gl_texture.width(), input_gl_texture.height());
+        output_gl_texture = gpu_helper_->CreateDestinationTexture(
+            input_gl_texture.width(), input_gl_texture.height(), input_gpu_buffer.format());
       }
 
-      MP_RETURN_IF_ERROR(effect_renderer->RenderEffect(
-          multi_face_geometry, input_gl_texture.width(),
-          input_gl_texture.height(), input_gl_texture.target(),
-          input_gl_texture.name(), output_gl_texture.target(),
-          output_gl_texture.name()))
+      MP_RETURN_IF_ERROR(effect_renderer->RenderEffect2(
+          multi_face_geometry,
+          input_gl_texture.width(), input_gl_texture.height(),
+          input_gl_texture, output_gl_texture))
           << "Failed to render the effect!";
 
       is_first_renderer = false;
@@ -225,7 +230,7 @@ absl::Status CaratFaceEffectRendererCalculator::Process(CalculatorContext* cc) {
 }
 
 absl::Status CaratFaceEffectRendererCalculator::Close(CalculatorContext* cc) {
-  return gpu_helper_.RunInGlContext([this]() -> absl::Status {
+  return gpu_helper_->RunInGlContext([this]() -> absl::Status {
     for (auto& effect_renderer : effect_renderers_) {
       effect_renderer.reset();
     }
@@ -235,7 +240,7 @@ absl::Status CaratFaceEffectRendererCalculator::Close(CalculatorContext* cc) {
 }
 
 // static
-absl::StatusOr<ImageFrame> CaratFaceEffectRendererCalculator::ReadTextureFromFile(const std::string& texture_path) {
+absl::StatusOr<std::shared_ptr<ImageFrame>> CaratFaceEffectRendererCalculator::ReadTextureFromFileAsPng(const std::string& texture_path) {
   ASSIGN_OR_RETURN(std::string texture_blob,
       ReadContentBlobFromFile(texture_path),
       _ << "Failed to read texture blob from file!");
@@ -254,8 +259,8 @@ absl::StatusOr<ImageFrame> CaratFaceEffectRendererCalculator::ReadTextureFromFil
   cv::Mat output_mat;
   switch (decoded_mat.channels()) {
     case 3:
-      image_format = ImageFormat::SRGB;
-      cv::cvtColor(decoded_mat, output_mat, cv::COLOR_BGR2RGB);
+      image_format = ImageFormat::SRGBA;
+      cv::cvtColor(decoded_mat, output_mat, cv::COLOR_BGR2RGBA);
       break;
 
     case 4:
@@ -269,13 +274,14 @@ absl::StatusOr<ImageFrame> CaratFaceEffectRendererCalculator::ReadTextureFromFil
           << decoded_mat.channels() << "!";
   }
 
-  ImageFrame output_image_frame(image_format, output_mat.size().width,
+  std::shared_ptr<ImageFrame> result = std::make_shared<ImageFrame>(image_format,
+      output_mat.size().width,
       output_mat.size().height,
       ImageFrame::kGlDefaultAlignmentBoundary);
 
-  output_mat.copyTo(formats::MatView(&output_image_frame));
+  output_mat.copyTo(formats::MatView(result.get()));
 
-  return output_image_frame;
+  return result;
 }
 
 // static
@@ -304,5 +310,20 @@ absl::StatusOr<std::string> CaratFaceEffectRendererCalculator::ReadContentBlobFr
 
   return content_blob;
 }
+
+// static
+ImageFrame CaratFaceEffectRendererCalculator::CreateEmptyColorTexture() {
+  static constexpr ImageFormat::Format kEmptyColorTextureFormat = ImageFormat::SRGBA;
+  static constexpr int kEmptyColorTextureWidth = 1;
+  static constexpr int kEmptyColorTextureHeight = 1;
+
+  ImageFrame empty_color_texture(
+      kEmptyColorTextureFormat, kEmptyColorTextureWidth,
+      kEmptyColorTextureHeight, ImageFrame::kGlDefaultAlignmentBoundary);
+  empty_color_texture.SetToZero();
+
+  return empty_color_texture;
+}
+
 
 }  // namespace mediapipe

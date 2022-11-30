@@ -28,5 +28,7 @@ cc_library(
     hdrs = ["gl_errors.h"],
     deps = [
         "//mediapipe/framework/port:status",
+        "//mediapipe/gpu:gl_base",
     ],
 )
+

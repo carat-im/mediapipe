@@ -5,6 +5,7 @@
 
 #include "absl/strings/str_join.h"
 #include "mediapipe/framework/port/status.h"
+#include "mediapipe/gpu/gl_base.h"
 
 namespace {
 

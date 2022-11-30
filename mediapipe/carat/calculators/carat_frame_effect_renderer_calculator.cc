@@ -194,7 +194,7 @@ absl::Status CaratFrameEffectRendererCalculator::RenderGpu(CalculatorContext *cc
   }
 
   GlTexture output_gl_texture = gpu_helper_->CreateDestinationTexture(
-      input_gl_texture.width(), input_gl_texture.height());
+      input_gl_texture.width(), input_gl_texture.height(), input_gpu_buffer.format());
 
   gpu_helper_->BindFramebuffer(output_gl_texture);
 

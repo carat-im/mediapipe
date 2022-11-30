@@ -38,6 +38,8 @@
 #include "mediapipe/modules/face_geometry/protos/face_geometry.pb.h"
 #include "mediapipe/modules/face_geometry/protos/mesh_3d.pb.h"
 #include "mediapipe/gpu/gl_simple_shaders.h"
+#include "mediapipe/carat/libs/gl_errors.h"
+#include "mediapipe/gpu/gl_calculator_helper.h"
 
 namespace mediapipe::face_geometry {
 namespace {
@@ -145,14 +147,13 @@ class Texture {
     RET_CHECK(handle) << "Failed to initialize an OpenGL texture!";
 
     glBindTexture(GL_TEXTURE_2D, handle);
-    glTexParameteri(GL_TEXTURE_2D, GL_NEAREST_MIPMAP_LINEAR, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, image_format, image_frame.Width(),
                  image_frame.Height(), 0, image_format, GL_UNSIGNED_BYTE,
                  image_frame.PixelData());
-    glGenerateMipmap(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     return absl::WrapUnique(new Texture(
@@ -163,6 +164,11 @@ class Texture {
   ~Texture() {
     if (is_owned_) {
       glDeleteProgram(handle_);
+    }
+
+    auto status = GetOpenGlErrors();
+    if (!status.ok()) {
+      LOG(WARNING) << "Texture destroy: " << status.message();
     }
   }
 
@@ -202,19 +208,19 @@ class RenderTarget {
     // Renderbuffer handle might have never been created if this render target
     // is destroyed before `SetColorbuffer()` is called for the first time.
     if (renderbuffer_handle_) {
-      glDeleteFramebuffers(1, &renderbuffer_handle_);
+      glDeleteRenderbuffers(1, &renderbuffer_handle_);
     }
   }
 
-  absl::Status SetColorbuffer(const Texture& colorbuffer_texture) {
+  absl::Status SetColorbuffer(const GlTexture& colorbuffer_texture) {
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_handle_);
     glViewport(0, 0, colorbuffer_texture.width(), colorbuffer_texture.height());
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(colorbuffer_texture.target(), colorbuffer_texture.handle());
+    glBindTexture(colorbuffer_texture.target(), colorbuffer_texture.name());
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                            colorbuffer_texture.target(),
-                           colorbuffer_texture.handle(),
+                           colorbuffer_texture.name(),
                            /*level*/ 0);
     glBindTexture(colorbuffer_texture.target(), 0);
 
@@ -254,7 +260,9 @@ class RenderTarget {
     glViewport(0, 0, viewport_width_, viewport_height_);
   }
 
-  void Unbind() const { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
+  void Unbind() const {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  }
 
   void Clear() const {
     Bind();
@@ -346,7 +354,7 @@ class Renderer {
 
   ~Renderer() { glDeleteProgram(program_handle_); }
 
-  absl::Status Render(const RenderTarget& render_target, const Texture& texture,
+  absl::Status Render(const RenderTarget& render_target, const GlTexture& texture,
                       const RenderableMesh3d& mesh_3d,
                       const std::array<float, 16>& projection_mat,
                       const std::array<float, 16>& model_mat,
@@ -390,7 +398,7 @@ class Renderer {
     glEnableVertexAttribArray(ATTRIB_TEXTURE_POSITION);
     // Set up textures and uniforms.
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(texture.target(), texture.handle());
+    glBindTexture(texture.target(), texture.name());
     glUniform1i(texture_uniform_, 1);
     glUniformMatrix4fv(projection_mat_uniform_, 1, GL_FALSE,
                        projection_mat.data());
@@ -440,21 +448,24 @@ class EffectRendererImpl : public EffectRenderer {
       std::unique_ptr<Renderer> renderer,
       RenderableMesh3d&& renderable_quad_mesh_3d,
       absl::optional<RenderableMesh3d>&& renderable_effect_mesh_3d,
-      std::unique_ptr<Texture> empty_color_texture,
-      std::unique_ptr<Texture> effect_texture)
+      std::unique_ptr<GpuBuffer> empty_color_texture_gpu_buffer,
+      std::unique_ptr<GpuBuffer> effect_texture_gpu_buffer,
+      std::shared_ptr<GlCalculatorHelper> gpu_helper)
       : environment_(environment),
         render_target_(std::move(render_target)),
         renderer_(std::move(renderer)),
         renderable_quad_mesh_3d_(std::move(renderable_quad_mesh_3d)),
         renderable_effect_mesh_3d_(std::move(renderable_effect_mesh_3d)),
-        empty_color_texture_(std::move(empty_color_texture)),
-        effect_texture_(std::move(effect_texture)),
+        empty_color_texture_gpu_buffer_(std::move(empty_color_texture_gpu_buffer)),
+        effect_texture_gpu_buffer_(std::move(effect_texture_gpu_buffer)),
+        gpu_helper_(gpu_helper),
         identity_matrix_(Create4x4IdentityMatrix()) {}
+
   ~EffectRendererImpl() {
     render_target_.reset();
     renderer_.reset();
-    empty_color_texture_.reset();
-    effect_texture_.reset();
+    empty_color_texture_gpu_buffer_.reset();
+    effect_texture_gpu_buffer_.reset();
   }
 
   absl::Status RenderEffect(
@@ -465,13 +476,18 @@ class EffectRendererImpl : public EffectRenderer {
       GLuint src_texture_name,    //
       GLenum dst_texture_target,  //
       GLuint dst_texture_name) {
+    return absl::OkStatus();
+  }
+
+  absl::Status RenderEffect2(
+      const std::vector<FaceGeometry>& multi_face_geometry,
+      int frame_width,
+      int frame_height,
+      GlTexture src_texture,
+      GlTexture dst_texture) {
     // Validate input arguments.
     MP_RETURN_IF_ERROR(ValidateFrameDimensions(frame_width, frame_height))
         << "Invalid frame dimensions!";
-    RET_CHECK(src_texture_name > 0 && dst_texture_name > 0)
-        << "Both source and destination texture names must be non-null!";
-    RET_CHECK_NE(src_texture_name, dst_texture_name)
-        << "Source and destination texture names must be different!";
 
     // Validate all input face geometries.
     for (const FaceGeometry& face_geometry : multi_face_geometry) {
@@ -479,28 +495,16 @@ class EffectRendererImpl : public EffectRenderer {
           << "Invalid face geometry!";
     }
 
-    // Wrap both source and destination textures.
-    ASSIGN_OR_RETURN(
-        std::unique_ptr<Texture> src_texture,
-        Texture::WrapExternalTexture(src_texture_name, src_texture_target,
-                                     frame_width, frame_height),
-        _ << "Failed to wrap the external source texture");
-    ASSIGN_OR_RETURN(
-        std::unique_ptr<Texture> dst_texture,
-        Texture::WrapExternalTexture(dst_texture_name, dst_texture_target,
-                                     frame_width, frame_height),
-        _ << "Failed to wrap the external destination texture");
-
     // Set the destination texture as the color buffer. Then, clear both the
     // color and the depth buffers for the render target.
-    MP_RETURN_IF_ERROR(render_target_->SetColorbuffer(*dst_texture))
+    MP_RETURN_IF_ERROR(render_target_->SetColorbuffer(dst_texture))
         << "Failed to set the destination texture as the colorbuffer!";
     render_target_->Clear();
 
     // Render the source texture on top of the quad mesh (i.e. make a copy)
     // into the render target.
     MP_RETURN_IF_ERROR(renderer_->Render(
-        *render_target_, *src_texture, renderable_quad_mesh_3d_,
+        *render_target_, src_texture, renderable_quad_mesh_3d_,
         identity_matrix_, identity_matrix_, Renderer::RenderMode::OVERDRAW))
         << "Failed to render the source texture on top of the quad mesh!";
 
@@ -530,6 +534,8 @@ class EffectRendererImpl : public EffectRenderer {
     std::array<float, 16> perspective_matrix = CreatePerspectiveMatrix(
         /*aspect_ratio*/ static_cast<float>(frame_width) / frame_height);
 
+    GlTexture empty_color_texture = gpu_helper_->CreateSourceTexture(*empty_color_texture_gpu_buffer_.get());
+
     // Render a face mesh occluder for each face.
     for (int i = 0; i < num_faces; ++i) {
       const std::array<float, 16>& face_pose_transform_matrix =
@@ -546,11 +552,13 @@ class EffectRendererImpl : public EffectRenderer {
           face_pose_transform_matrix;
       occlusion_face_pose_transform_matrix[14] -= 0.1f;  // ~ 1mm
       MP_RETURN_IF_ERROR(renderer_->Render(
-          *render_target_, *empty_color_texture_, renderable_face_mesh,
+          *render_target_, empty_color_texture, renderable_face_mesh,
           perspective_matrix, occlusion_face_pose_transform_matrix,
           Renderer::RenderMode::OCCLUSION))
           << "Failed to render the face mesh occluder!";
     }
+
+    GlTexture effect_texture = gpu_helper_->CreateSourceTexture(*effect_texture_gpu_buffer_.get());
 
     // Render the main face mesh effect component for each face.
     for (int i = 0; i < num_faces; ++i) {
@@ -565,11 +573,14 @@ class EffectRendererImpl : public EffectRenderer {
                                      : renderable_face_meshes[i];
 
       MP_RETURN_IF_ERROR(renderer_->Render(
-          *render_target_, *effect_texture_, main_effect_mesh_3d,
+          *render_target_, effect_texture, main_effect_mesh_3d,
           perspective_matrix, face_pose_transform_matrix,
           Renderer::RenderMode::OPAQUE))
           << "Failed to render the main effect pass!";
     }
+
+    empty_color_texture.Release();
+    effect_texture.Release();
 
     // At this point in the code, the destination texture must contain the
     // correctly renderer effect, so we should just return.
@@ -646,8 +657,10 @@ class EffectRendererImpl : public EffectRenderer {
   RenderableMesh3d renderable_quad_mesh_3d_;
   absl::optional<RenderableMesh3d> renderable_effect_mesh_3d_;
 
-  std::unique_ptr<Texture> empty_color_texture_;
-  std::unique_ptr<Texture> effect_texture_;
+  std::unique_ptr<GpuBuffer> empty_color_texture_gpu_buffer_;
+  std::unique_ptr<GpuBuffer> effect_texture_gpu_buffer_;
+
+  std::shared_ptr<GlCalculatorHelper> gpu_helper_;
 
   std::array<float, 16> identity_matrix_;
 };
@@ -699,6 +712,15 @@ absl::StatusOr<std::unique_ptr<EffectRenderer>> CreateEffectRenderer(
     const Environment& environment,                //
     const absl::optional<Mesh3d>& effect_mesh_3d,  //
     ImageFrame&& effect_texture) {
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<EffectRenderer>> CreateEffectRenderer2(
+    const Environment& environment,                //
+    const absl::optional<Mesh3d>& effect_mesh_3d,  //
+    std::unique_ptr<GpuBuffer> empty_color_gl_texture_gpu_buffer,
+    std::unique_ptr<GpuBuffer> effect_texture_gpu_buffer,
+    std::shared_ptr<GlCalculatorHelper> gpu_helper) {
   MP_RETURN_IF_ERROR(ValidateEnvironment(environment))
       << "Invalid environment!";
   if (effect_mesh_3d) {
@@ -720,19 +742,13 @@ absl::StatusOr<std::unique_ptr<EffectRenderer>> CreateEffectRenderer(
                      RenderableMesh3d::CreateFromProtoMesh3d(*effect_mesh_3d),
                      _ << "Failed to create a renderable effect mesh!");
   }
-  ASSIGN_OR_RETURN(std::unique_ptr<Texture> empty_color_gl_texture,
-                   Texture::CreateFromImageFrame(CreateEmptyColorTexture()),
-                   _ << "Failed to create an empty color texture!");
-  ASSIGN_OR_RETURN(std::unique_ptr<Texture> effect_gl_texture,
-                   Texture::CreateFromImageFrame(effect_texture),
-                   _ << "Failed to create an effect texture!");
 
   std::unique_ptr<EffectRenderer> result =
       absl::make_unique<EffectRendererImpl>(
           environment, std::move(render_target), std::move(renderer),
           std::move(renderable_quad_mesh_3d),
           std::move(renderable_effect_mesh_3d),
-          std::move(empty_color_gl_texture), std::move(effect_gl_texture));
+          std::move(empty_color_gl_texture_gpu_buffer), std::move(effect_texture_gpu_buffer), gpu_helper);
 
   return result;
 }
