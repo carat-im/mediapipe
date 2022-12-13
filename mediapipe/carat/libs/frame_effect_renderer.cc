@@ -121,7 +121,7 @@ class FrameEffectRendererImpl : public FrameEffectRenderer {
 
     glEnable(GL_BLEND);
     glBlendEquation(GL_FUNC_ADD);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 
     auto target_width = height_ * 9.0 / 16.0;
     transform_matrix_[0] = target_width / width_;
