@@ -149,16 +149,16 @@ static const int kNumFaces = 5;
   self.caratFaceEffectListString = res;
 }
 
-- (void)setColorLut:(NSString *)filePath intensity:(NSNumber *)intensity grain:(NSNumber *)grain vignette:(NSNumber *)vignette {
+- (void)setColorLut:(NSString *)filePath intensity:(float)intensity grain:(float)grain vignette:(float)vignette {
   if (filePath == [NSNull null]) {
     _lutFilePath = nil;
   } else {
     _lutFilePath = filePath;
   }
 
-  _lutIntensity = intensity == [NSNull null] ? 0 : intensity.floatValue;
-  _lutGrain = grain == [NSNull null] ? 0 : grain.floatValue;
-  _lutVignette = vignette == [NSNull null] ? 0 : vignette.floatValue;
+  _lutIntensity = intensity;
+  _lutGrain = grain;
+  _lutVignette = vignette;
 
   [self makeColorLutString];
 }
@@ -186,10 +186,10 @@ static const int kNumFaces = 5;
 }
 
 - (void)makeColorLutString {
-  if (_lutFilePath == nil) {
-    self.colorLutString = @"";
-  } else {
-    self.colorLutString = [NSString stringWithFormat:@"lut_path: \"%@\" intensity: %f grain: %f vignette: %f", _lutFilePath, _lutIntensity, _lutGrain, _lutVignette];
+  self.colorLutString = [NSString stringWithFormat:@"intensity: %f grain: %f vignette: %f", _lutIntensity, _lutGrain, _lutVignette];
+
+  if (_lutFilePath != nil) {
+    self.colorLutString = [self.colorLutString stringByAppendingString:[NSString stringWithFormat:@" lut_path: \"%@\"", _lutFilePath]];
   }
 }
 

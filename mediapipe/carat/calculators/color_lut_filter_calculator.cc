@@ -56,9 +56,6 @@ class ColorLutFilterCalculator : public CalculatorBase {
   bool initialized_ = false;
 
   std::string current_lut_path_;
-  float intensity_;
-  float grain_;
-  float vignette_;
 
   // gl_calculator_helper.h 의 CreateSourceTexture에 따르면,
   // 특정 frame을 유지하면서 재사용하고 싶을 땐 GpuBuffer를 전역 변수로 유지시키고,
@@ -134,7 +131,9 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
 
     in vec2 sample_coordinate;
     uniform sampler2D frame;
+
     uniform sampler2D lut_texture;
+    uniform int has_lut_texture;
 
     uniform float intensity;
     uniform float grain;
@@ -184,7 +183,12 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
 
     void main() {
       vec4 color = texture2D(frame, sample_coordinate);
-      gl_FragColor = lookup_table(color);
+
+      if (has_lut_texture == 1) {
+        gl_FragColor = lookup_table(color);
+      } else {
+        gl_FragColor = color;
+      }
 
       if (grain != 0.0) {
         gl_FragColor = grain_filter(gl_FragColor, sample_coordinate, grain * intensity);
@@ -250,29 +254,13 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
 
   const auto& input_gpu_buffer =
       cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
-
   GlTexture input_gl_texture =
       gpu_helper_.CreateSourceTexture(input_gpu_buffer);
 
-  if (lut_gpu_buffer_ == nullptr) {
-    std::unique_ptr<GpuBuffer> output_gpu_buffer =
-        input_gl_texture.GetFrame<GpuBuffer>();
-
-    cc->Outputs()
-        .Tag(kImageGpuTag)
-        .AddPacket(mediapipe::Adopt<GpuBuffer>(output_gpu_buffer.release())
-            .At(cc->InputTimestamp()));
-
-    input_gl_texture.Release();
-
-    return absl::OkStatus();
+  std::unique_ptr<GlTexture> lut_gl_texture;
+  if (lut_gpu_buffer_ != nullptr) {
+    lut_gl_texture = absl::make_unique<GlTexture>(gpu_helper_.CreateSourceTexture(*lut_gpu_buffer_.get()));
   }
-
-  intensity_ = color_lut.intensity();
-  grain_ = color_lut.grain();
-  vignette_ = color_lut.vignette();
-
-  GlTexture lut_gl_texture = gpu_helper_.CreateSourceTexture(*lut_gpu_buffer_.get());
 
   GlTexture output_gl_texture = gpu_helper_.CreateDestinationTexture(
       input_gl_texture.width(), input_gl_texture.height(), input_gpu_buffer.format());
@@ -284,19 +272,26 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(input_gl_texture.target(), input_gl_texture.name());
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(lut_gl_texture.target(), lut_gl_texture.name());
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glActiveTexture(GL_TEXTURE2);
+    if (lut_gl_texture != nullptr) {
+      glBindTexture(lut_gl_texture->target(), lut_gl_texture->name());
+
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    } else {
+      glBindTexture(GL_TEXTURE_2D, 0);
+    }
 
     glUseProgram(program_);
 
-    glUniform1f(glGetUniformLocation(program_, "intensity"), intensity_);
-    glUniform1f(glGetUniformLocation(program_, "grain"), grain_);
-    glUniform1f(glGetUniformLocation(program_, "vignette"), vignette_);
+    glUniform1i(glGetUniformLocation(program_, "has_lut_texture"), lut_gl_texture != nullptr ? 1 : 0);
+
+    glUniform1f(glGetUniformLocation(program_, "intensity"), color_lut.intensity());
+    glUniform1f(glGetUniformLocation(program_, "grain"), color_lut.grain());
+    glUniform1f(glGetUniformLocation(program_, "vignette"), color_lut.vignette());
 
     glBindVertexArray(vao_);
 
@@ -337,7 +332,10 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
 
   output_gl_texture.Release();
   input_gl_texture.Release();
-  lut_gl_texture.Release();
+  if (lut_gl_texture != nullptr) {
+    lut_gl_texture->Release();
+    lut_gl_texture.reset();
+  }
 
   return absl::OkStatus();
 }
