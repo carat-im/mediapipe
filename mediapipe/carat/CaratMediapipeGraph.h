@@ -13,9 +13,8 @@
 - (void)startGraph;
 - (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer timestamp:(CMTime)timestamp;
 - (void)setFaceEffects:(NSArray *)effects;
-- (void)setColorLut:(NSString *)filePath intensity:(float)intensity grain:(float)grain vignette:(float)vignette;
+- (void)setColorLut:(NSString *)filePath intensity:(float)intensity grain:(float)grain vignette:(float)vignette radialBlur:(float)radialBlur;
 - (void)setFrameEffects:(NSArray *)effects;
-- (void)setColorLutIntensity:(NSNumber *)intensity;
 - (void)waitUntilIdle;
 @property(weak, nonatomic) id <CaratMediapipeGraphDelegate> delegate;
 @end

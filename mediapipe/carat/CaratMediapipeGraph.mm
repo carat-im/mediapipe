@@ -36,6 +36,7 @@ static const int kNumFaces = 5;
   float _lutIntensity;
   float _lutGrain;
   float _lutVignette;
+  float _radialBlur;
 }
 
 #pragma mark - Cleanup methods
@@ -149,7 +150,7 @@ static const int kNumFaces = 5;
   self.caratFaceEffectListString = res;
 }
 
-- (void)setColorLut:(NSString *)filePath intensity:(float)intensity grain:(float)grain vignette:(float)vignette {
+- (void)setColorLut:(NSString *)filePath intensity:(float)intensity grain:(float)grain vignette:(float)vignette radialBlur:(float)radialBlur {
   if (filePath == [NSNull null]) {
     _lutFilePath = nil;
   } else {
@@ -159,6 +160,7 @@ static const int kNumFaces = 5;
   _lutIntensity = intensity;
   _lutGrain = grain;
   _lutVignette = vignette;
+  _radialBlur = radialBlur;
 
   [self makeColorLutString];
 }
@@ -179,14 +181,8 @@ static const int kNumFaces = 5;
   self.caratFrameEffectListString = res;
 }
 
-- (void)setColorLutIntensity:(NSNumber *)intensity {
-  _lutIntensity = intensity == [NSNull null] ? 0 : intensity.floatValue;
-
-  [self makeColorLutString];
-}
-
 - (void)makeColorLutString {
-  self.colorLutString = [NSString stringWithFormat:@"intensity: %f grain: %f vignette: %f", _lutIntensity, _lutGrain, _lutVignette];
+  self.colorLutString = [NSString stringWithFormat:@"intensity: %f grain: %f vignette: %f radial_blur: %f", _lutIntensity, _lutGrain, _lutVignette, _radialBlur];
 
   if (_lutFilePath != nil) {
     self.colorLutString = [self.colorLutString stringByAppendingString:[NSString stringWithFormat:@" lut_path: \"%@\"", _lutFilePath]];

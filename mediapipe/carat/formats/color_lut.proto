@@ -10,4 +10,5 @@ message ColorLut {
   optional float intensity = 2;
   optional float grain = 3;
   optional float vignette = 4;
+  optional float radial_blur = 5;
 }

@@ -132,12 +132,16 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
     in vec2 sample_coordinate;
     uniform sampler2D frame;
 
+    uniform vec2 size;
+
     uniform sampler2D lut_texture;
     uniform int has_lut_texture;
 
     uniform float intensity;
     uniform float grain;
     uniform float vignette;
+
+    uniform float radial_blur;
 
     vec4 lookup_table(vec4 color) {
       float blueColor = color.b * 63.0;
@@ -181,13 +185,31 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       return smoothstep(-0.5, 0.5, diff);
     }
 
+    vec4 blur_radial(sampler2D tex, vec2 texel, vec2 uv, float radius) {
+        vec4 total = vec4(0);
+        
+        float dist = 1.0/50.0; // 50.0을 기준으로 더 높이면 느려지지만 더 blur가 잘됨.
+        float rad = radius * length(texel);
+        for(float i = 0.0; i<=1.0; i+=dist)
+        {
+            vec2 coord = (uv-0.5) / (1.0+rad*i)+0.5;
+            total += texture2D(tex,coord);
+        }
+        
+        return total * dist;
+    }
+
     void main() {
-      vec4 color = texture2D(frame, sample_coordinate);
+      if (radial_blur != 0.0) {
+        vec2 texel = 1.0 / size;
+        float radius = 160.0 * radial_blur;
+        gl_FragColor = blur_radial(frame, texel, sample_coordinate, radius);
+      } else {
+        gl_FragColor = texture2D(frame, sample_coordinate);
+      }
 
       if (has_lut_texture == 1) {
-        gl_FragColor = lookup_table(color);
-      } else {
-        gl_FragColor = color;
+        gl_FragColor = lookup_table(gl_FragColor);
       }
 
       if (grain != 0.0) {
@@ -287,11 +309,14 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
 
     glUseProgram(program_);
 
+    glUniform2f(glGetUniformLocation(program_, "size"), input_gl_texture.width(), input_gl_texture.height());
+
     glUniform1i(glGetUniformLocation(program_, "has_lut_texture"), lut_gl_texture != nullptr ? 1 : 0);
 
     glUniform1f(glGetUniformLocation(program_, "intensity"), color_lut.intensity());
     glUniform1f(glGetUniformLocation(program_, "grain"), color_lut.grain());
     glUniform1f(glGetUniformLocation(program_, "vignette"), color_lut.vignette());
+    glUniform1f(glGetUniformLocation(program_, "radial_blur"), color_lut.radial_blur());
 
     glBindVertexArray(vao_);
 
