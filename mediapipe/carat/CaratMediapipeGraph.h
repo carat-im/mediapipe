@@ -13,7 +13,11 @@
 - (void)startGraph;
 - (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer timestamp:(CMTime)timestamp;
 - (void)setFaceEffects:(NSArray *)effects;
-- (void)setColorLut:(NSString *)filePath intensity:(float)intensity grain:(float)grain vignette:(float)vignette radialBlur:(float)radialBlur;
+- (void)setColorLut:(NSString *)filePath intensity:(float)intensity grain:(float)grain vignette:(float)vignette
+  radialBlur:(float)radialBlur
+  rgbSplit:(float)rgbSplit
+  blendImagePath1:(NSString *)blendImagePath1 blendMode1:(int)blendMode1
+  blendImagePath2:(NSString *)blendImagePath2 blendMode2:(int)blendMode2;
 - (void)setFrameEffects:(NSArray *)effects;
 - (void)waitUntilIdle;
 @property(weak, nonatomic) id <CaratMediapipeGraphDelegate> delegate;

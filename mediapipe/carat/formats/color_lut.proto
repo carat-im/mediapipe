@@ -11,4 +11,9 @@ message ColorLut {
   optional float grain = 3;
   optional float vignette = 4;
   optional float radial_blur = 5;
+  optional float rgb_split = 6;
+  optional string blend_image_path_1 = 7;
+  optional int32 blend_mode_1 = 8;
+  optional string blend_image_path_2 = 9;
+  optional int32 blend_mode_2 = 10;
 }

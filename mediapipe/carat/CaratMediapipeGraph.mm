@@ -37,6 +37,11 @@ static const int kNumFaces = 5;
   float _lutGrain;
   float _lutVignette;
   float _radialBlur;
+  float _rgbSplit;
+  NSString *_blendImagePath1;
+  int _blendMode1;
+  NSString *_blendImagePath2;
+  int _blendMode2;
 }
 
 #pragma mark - Cleanup methods
@@ -150,7 +155,11 @@ static const int kNumFaces = 5;
   self.caratFaceEffectListString = res;
 }
 
-- (void)setColorLut:(NSString *)filePath intensity:(float)intensity grain:(float)grain vignette:(float)vignette radialBlur:(float)radialBlur {
+- (void)setColorLut:(NSString *)filePath intensity:(float)intensity grain:(float)grain vignette:(float)vignette
+  radialBlur:(float)radialBlur 
+  rgbSplit:(float)rgbSplit
+  blendImagePath1:(NSString *)blendImagePath1 blendMode1:(int)blendMode1
+  blendImagePath2:(NSString *)blendImagePath2 blendMode2:(int)blendMode2 {
   if (filePath == [NSNull null]) {
     _lutFilePath = nil;
   } else {
@@ -161,6 +170,19 @@ static const int kNumFaces = 5;
   _lutGrain = grain;
   _lutVignette = vignette;
   _radialBlur = radialBlur;
+  _rgbSplit = rgbSplit;
+  if (blendImagePath1 == [NSNull null]) {
+    _blendImagePath1 = nil;
+  } else {
+    _blendImagePath1 = blendImagePath1;
+  }
+  _blendMode1 = blendMode1;
+  if (blendImagePath2 == [NSNull null]) {
+    _blendImagePath2 = nil;
+  } else {
+    _blendImagePath2 = blendImagePath2;
+  }
+  _blendMode2 = blendMode2;
 
   [self makeColorLutString];
 }
@@ -182,10 +204,18 @@ static const int kNumFaces = 5;
 }
 
 - (void)makeColorLutString {
-  self.colorLutString = [NSString stringWithFormat:@"intensity: %f grain: %f vignette: %f radial_blur: %f", _lutIntensity, _lutGrain, _lutVignette, _radialBlur];
+  self.colorLutString = [NSString stringWithFormat:@"intensity: %f grain: %f vignette: %f radial_blur: %f rgb_split: %f", _lutIntensity, _lutGrain, _lutVignette, _radialBlur, _rgbSplit];
 
   if (_lutFilePath != nil) {
     self.colorLutString = [self.colorLutString stringByAppendingString:[NSString stringWithFormat:@" lut_path: \"%@\"", _lutFilePath]];
+  }
+
+  if (_blendImagePath1 != nil) {
+    self.colorLutString = [self.colorLutString stringByAppendingString:[NSString stringWithFormat:@" blend_image_path_1: \"%@\" blend_mode_1: %d", _blendImagePath1, _blendMode1]];
+  }
+
+  if (_blendImagePath2 != nil) {
+    self.colorLutString = [self.colorLutString stringByAppendingString:[NSString stringWithFormat:@" blend_image_path_2: \"%@\" blend_mode_2: %d", _blendImagePath2, _blendMode2]];
   }
 }
 

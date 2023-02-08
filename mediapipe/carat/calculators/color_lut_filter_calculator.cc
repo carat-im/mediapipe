@@ -56,11 +56,15 @@ class ColorLutFilterCalculator : public CalculatorBase {
   bool initialized_ = false;
 
   std::string current_lut_path_;
+  std::string current_blend_image_path_1_;
+  std::string current_blend_image_path_2_;
 
   // gl_calculator_helper.h 의 CreateSourceTexture에 따르면,
   // 특정 frame을 유지하면서 재사용하고 싶을 땐 GpuBuffer를 전역 변수로 유지시키고,
   // GlTexture가 필요할때마다 CreateSourceTexture를 사용하는게 좋다고 한다.
   std::unique_ptr<GpuBuffer> lut_gpu_buffer_;
+  std::unique_ptr<GpuBuffer> blend_image_1_gpu_buffer_;
+  std::unique_ptr<GpuBuffer> blend_image_2_gpu_buffer_;
 };
 
 REGISTER_CALCULATOR(ColorLutFilterCalculator);
@@ -110,6 +114,8 @@ absl::Status ColorLutFilterCalculator::Close(CalculatorContext* cc) {
       glDeleteBuffers(2, vbo_);
 
       lut_gpu_buffer_.reset();
+      blend_image_1_gpu_buffer_.reset();
+      blend_image_2_gpu_buffer_.reset();
 
       return absl::OkStatus();
   });
@@ -142,6 +148,16 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
     uniform float vignette;
 
     uniform float radial_blur;
+
+    uniform float rgb_split;
+
+    uniform sampler2D blend_image_texture_1;
+    uniform int blend_mode_1;
+    uniform int has_blend_image_texture_1;
+
+    uniform sampler2D blend_image_texture_2;
+    uniform int blend_mode_2;
+    uniform int has_blend_image_texture_2;
 
     vec4 lookup_table(vec4 color) {
       float blueColor = color.b * 63.0;
@@ -186,17 +202,36 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
     }
 
     vec4 blur_radial(sampler2D tex, vec2 texel, vec2 uv, float radius) {
-        vec4 total = vec4(0);
-        
-        float dist = 1.0/50.0; // 50.0을 기준으로 더 높이면 느려지지만 더 blur가 잘됨.
-        float rad = radius * length(texel);
-        for(float i = 0.0; i<=1.0; i+=dist)
-        {
-            vec2 coord = (uv-0.5) / (1.0+rad*i)+0.5;
-            total += texture2D(tex,coord);
-        }
-        
-        return total * dist;
+      vec4 total = vec4(0);
+      
+      float dist = 1.0/50.0; // 50.0을 기준으로 더 높이면 느려지지만 더 blur가 잘됨.
+      float rad = radius * length(texel);
+      for(float i = 0.0; i<=1.0; i+=dist) {
+        vec2 coord = (uv-0.5) / (1.0+rad*i)+0.5;
+        total += texture2D(tex,coord);
+      }
+      
+      return total * dist;
+    }
+
+    vec3 screen(vec3 s, vec3 d) {
+      return s + d - s * d;
+    }
+
+    float overlay(float s, float d) {
+      return (d < 0.5) ? 2.0 * s * d : 1.0 - 2.0 * (1.0 - s) * (1.0 - d);
+    }
+
+    vec3 overlay(vec3 s, vec3 d) {
+      vec3 c;
+      c.x = overlay(s.x,d.x);
+      c.y = overlay(s.y,d.y);
+      c.z = overlay(s.z,d.z);
+      return c;
+    }
+
+    vec3 multiply(vec3 s, vec3 d) {
+      return s*d;
     }
 
     void main() {
@@ -208,8 +243,41 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
         gl_FragColor = texture2D(frame, sample_coordinate);
       }
 
+      if (rgb_split != 0.0) {
+        float split_amount = rgb_split * fract(sin(dot(sample_coordinate, vec2(12.9898, 78.233))) * 43758.5453);
+        vec4 splitted = vec4(
+          texture2D(frame, vec2(sample_coordinate.x + split_amount, sample_coordinate.y)).r,
+          texture2D(frame, sample_coordinate).g,
+          texture2D(frame, vec2(sample_coordinate.x - split_amount, sample_coordinate.y)).b,
+          1.0
+        );
+        gl_FragColor = mix(gl_FragColor, splitted, 0.5);
+      }
+
       if (has_lut_texture == 1) {
         gl_FragColor = lookup_table(gl_FragColor);
+      }
+
+      if (has_blend_image_texture_1 == 1) {
+        vec3 blend_image_color = texture2D(blend_image_texture_1, sample_coordinate).rgb;
+        if (blend_mode_1 == 0) {
+          gl_FragColor = vec4(screen(blend_image_color, gl_FragColor.rgb), 1.0);
+        } else if (blend_mode_1 == 1) {
+          gl_FragColor = vec4(overlay(blend_image_color, gl_FragColor.rgb), 1.0);
+        } else if (blend_mode_1 == 2) {
+          gl_FragColor = vec4(multiply(blend_image_color, gl_FragColor.rgb), 1.0);
+        }
+      }
+
+      if (has_blend_image_texture_2 == 1) {
+        vec3 blend_image_color = texture2D(blend_image_texture_2, sample_coordinate).rgb;
+        if (blend_mode_2 == 0) {
+          gl_FragColor = vec4(screen(blend_image_color, gl_FragColor.rgb), 1.0);
+        } else if (blend_mode_2 == 1) {
+          gl_FragColor = vec4(overlay(blend_image_color, gl_FragColor.rgb), 1.0);
+        } else if (blend_mode_2 == 2) {
+          gl_FragColor = vec4(multiply(blend_image_color, gl_FragColor.rgb), 1.0);
+        }
       }
 
       if (grain != 0.0) {
@@ -234,6 +302,8 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
   // 참고: gl_simple_calculator.h 의 GlRender.
   glUniform1i(glGetUniformLocation(program_, "frame"), 1);
   glUniform1i(glGetUniformLocation(program_, "lut_texture"), 2);
+  glUniform1i(glGetUniformLocation(program_, "blend_image_texture_1"), 3);
+  glUniform1i(glGetUniformLocation(program_, "blend_image_texture_2"), 4);
 
   // vertex storage
   glGenBuffers(2, vbo_);
@@ -274,15 +344,59 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
     lut_gpu_buffer_.reset();
   }
 
-  const auto& input_gpu_buffer =
-      cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
-  GlTexture input_gl_texture =
-      gpu_helper_.CreateSourceTexture(input_gpu_buffer);
-
   std::unique_ptr<GlTexture> lut_gl_texture;
   if (lut_gpu_buffer_ != nullptr) {
     lut_gl_texture = absl::make_unique<GlTexture>(gpu_helper_.CreateSourceTexture(*lut_gpu_buffer_.get()));
   }
+
+  if (color_lut.has_blend_image_path_1()) {
+    const auto& new_path = color_lut.blend_image_path_1();
+    if (current_blend_image_path_1_ != new_path) {
+      current_blend_image_path_1_ = new_path;
+      blend_image_1_gpu_buffer_.reset();
+
+      ASSIGN_OR_RETURN(std::shared_ptr<ImageFrame> image_frame,
+          ReadTextureFromFileAsPng(current_blend_image_path_1_),
+          _ << "Failed to read the texture from file!");
+
+      blend_image_1_gpu_buffer_ = absl::make_unique<GpuBuffer>(gpu_helper_.GpuBufferWithImageFrame(image_frame));
+    }
+  } else {
+    current_blend_image_path_1_ = "";
+    blend_image_1_gpu_buffer_.reset();
+  }
+
+  std::unique_ptr<GlTexture> blend_image_1_gl_texture;
+  if (blend_image_1_gpu_buffer_ != nullptr) {
+    blend_image_1_gl_texture = absl::make_unique<GlTexture>(gpu_helper_.CreateSourceTexture(*blend_image_1_gpu_buffer_.get()));
+  }
+
+  if (color_lut.has_blend_image_path_2()) {
+    const auto& new_path = color_lut.blend_image_path_2();
+    if (current_blend_image_path_2_ != new_path) {
+      current_blend_image_path_2_ = new_path;
+      blend_image_2_gpu_buffer_.reset();
+
+      ASSIGN_OR_RETURN(std::shared_ptr<ImageFrame> image_frame,
+          ReadTextureFromFileAsPng(current_blend_image_path_2_),
+          _ << "Failed to read the texture from file!");
+
+      blend_image_2_gpu_buffer_ = absl::make_unique<GpuBuffer>(gpu_helper_.GpuBufferWithImageFrame(image_frame));
+    }
+  } else {
+    current_blend_image_path_2_ = "";
+    blend_image_2_gpu_buffer_.reset();
+  }
+
+  std::unique_ptr<GlTexture> blend_image_2_gl_texture;
+  if (blend_image_2_gpu_buffer_ != nullptr) {
+    blend_image_2_gl_texture = absl::make_unique<GlTexture>(gpu_helper_.CreateSourceTexture(*blend_image_2_gpu_buffer_.get()));
+  }
+
+  const auto& input_gpu_buffer =
+      cc->Inputs().Tag(kImageGpuTag).Get<GpuBuffer>();
+  GlTexture input_gl_texture =
+      gpu_helper_.CreateSourceTexture(input_gpu_buffer);
 
   GlTexture output_gl_texture = gpu_helper_.CreateDestinationTexture(
       input_gl_texture.width(), input_gl_texture.height(), input_gpu_buffer.format());
@@ -307,16 +421,45 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
       glBindTexture(GL_TEXTURE_2D, 0);
     }
 
+    glActiveTexture(GL_TEXTURE3);
+    if (blend_image_1_gl_texture != nullptr) {
+      glBindTexture(blend_image_1_gl_texture->target(), blend_image_1_gl_texture->name());
+
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    } else {
+      glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    glActiveTexture(GL_TEXTURE4);
+    if (blend_image_2_gl_texture != nullptr) {
+      glBindTexture(blend_image_2_gl_texture->target(), blend_image_2_gl_texture->name());
+
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    } else {
+      glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
     glUseProgram(program_);
 
     glUniform2f(glGetUniformLocation(program_, "size"), input_gl_texture.width(), input_gl_texture.height());
 
     glUniform1i(glGetUniformLocation(program_, "has_lut_texture"), lut_gl_texture != nullptr ? 1 : 0);
+    glUniform1i(glGetUniformLocation(program_, "has_blend_image_texture_1"), blend_image_1_gl_texture != nullptr ? 1 : 0);
+    glUniform1i(glGetUniformLocation(program_, "has_blend_image_texture_2"), blend_image_2_gl_texture != nullptr ? 1 : 0);
 
     glUniform1f(glGetUniformLocation(program_, "intensity"), color_lut.intensity());
     glUniform1f(glGetUniformLocation(program_, "grain"), color_lut.grain());
     glUniform1f(glGetUniformLocation(program_, "vignette"), color_lut.vignette());
     glUniform1f(glGetUniformLocation(program_, "radial_blur"), color_lut.radial_blur());
+    glUniform1f(glGetUniformLocation(program_, "rgb_split"), color_lut.rgb_split());
+    glUniform1i(glGetUniformLocation(program_, "blend_mode_1"), color_lut.blend_mode_1());
+    glUniform1i(glGetUniformLocation(program_, "blend_mode_2"), color_lut.blend_mode_2());
 
     glBindVertexArray(vao_);
 
@@ -357,9 +500,20 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
 
   output_gl_texture.Release();
   input_gl_texture.Release();
+
   if (lut_gl_texture != nullptr) {
     lut_gl_texture->Release();
     lut_gl_texture.reset();
+  }
+
+  if (blend_image_1_gl_texture != nullptr) {
+    blend_image_1_gl_texture->Release();
+    blend_image_1_gl_texture.reset();
+  }
+
+  if (blend_image_2_gl_texture != nullptr) {
+    blend_image_2_gl_texture->Release();
+    blend_image_2_gl_texture.reset();
   }
 
   return absl::OkStatus();
