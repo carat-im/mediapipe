@@ -201,13 +201,12 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       return smoothstep(-0.5, 0.5, diff);
     }
 
-    vec4 blur_radial(sampler2D tex, vec2 texel, vec2 uv, float radius) {
+    vec4 blur_radial(sampler2D tex, vec2 uv, float radius) {
       vec4 total = vec4(0);
       
       float dist = 1.0/50.0; // 50.0을 기준으로 더 높이면 느려지지만 더 blur가 잘됨.
-      float rad = radius * length(texel);
       for(float i = 0.0; i<=1.0; i+=dist) {
-        vec2 coord = (uv-0.5) / (1.0+rad*i)+0.5;
+        vec2 coord = (uv-0.5) / (1.0+radius*i)+0.5;
         total += texture2D(tex,coord);
       }
       
@@ -236,9 +235,7 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
 
     void main() {
       if (radial_blur != 0.0) {
-        vec2 texel = 1.0 / size;
-        float radius = 160.0 * radial_blur;
-        gl_FragColor = blur_radial(frame, texel, sample_coordinate, radius);
+        gl_FragColor = blur_radial(frame, sample_coordinate, radial_blur);
       } else {
         gl_FragColor = texture2D(frame, sample_coordinate);
       }
