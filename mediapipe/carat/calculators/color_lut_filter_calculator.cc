@@ -256,24 +256,24 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       }
 
       if (has_blend_image_texture_1 == 1) {
-        vec3 blend_image_color = texture2D(blend_image_texture_1, sample_coordinate).rgb;
+        vec4 blend_image_color = texture2D(blend_image_texture_1, sample_coordinate);
         if (blend_mode_1 == 0) {
-          gl_FragColor = vec4(screen(blend_image_color, gl_FragColor.rgb), 1.0);
+          gl_FragColor = vec4(mix(gl_FragColor.rgb, screen(blend_image_color.rgb, gl_FragColor.rgb), blend_image_color.a), 1.0);
         } else if (blend_mode_1 == 1) {
-          gl_FragColor = vec4(overlay(blend_image_color, gl_FragColor.rgb), 1.0);
+          gl_FragColor = vec4(mix(gl_FragColor.rgb, overlay(blend_image_color.rgb, gl_FragColor.rgb), blend_image_color.a), 1.0);
         } else if (blend_mode_1 == 2) {
-          gl_FragColor = vec4(multiply(blend_image_color, gl_FragColor.rgb), 1.0);
+          gl_FragColor = vec4(mix(gl_FragColor.rgb, multiply(blend_image_color.rgb, gl_FragColor.rgb), blend_image_color.a), 1.0);
         }
       }
 
       if (has_blend_image_texture_2 == 1) {
-        vec3 blend_image_color = texture2D(blend_image_texture_2, sample_coordinate).rgb;
+        vec4 blend_image_color = texture2D(blend_image_texture_2, sample_coordinate);
         if (blend_mode_2 == 0) {
-          gl_FragColor = vec4(screen(blend_image_color, gl_FragColor.rgb), 1.0);
+          gl_FragColor = vec4(mix(gl_FragColor.rgb, screen(blend_image_color.rgb, gl_FragColor.rgb), blend_image_color.a), 1.0);
         } else if (blend_mode_2 == 1) {
-          gl_FragColor = vec4(overlay(blend_image_color, gl_FragColor.rgb), 1.0);
+          gl_FragColor = vec4(mix(gl_FragColor.rgb, overlay(blend_image_color.rgb, gl_FragColor.rgb), blend_image_color.a), 1.0);
         } else if (blend_mode_2 == 2) {
-          gl_FragColor = vec4(multiply(blend_image_color, gl_FragColor.rgb), 1.0);
+          gl_FragColor = vec4(mix(gl_FragColor.rgb, multiply(blend_image_color.rgb, gl_FragColor.rgb), blend_image_color.a), 1.0);
         }
       }
 
