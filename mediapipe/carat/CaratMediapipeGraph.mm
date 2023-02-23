@@ -160,7 +160,7 @@ static const int kNumFaces = 5;
   rgbSplit:(float)rgbSplit
   blendImagePath1:(NSString *)blendImagePath1 blendMode1:(int)blendMode1
   blendImagePath2:(NSString *)blendImagePath2 blendMode2:(int)blendMode2 {
-  if (filePath == [NSNull null]) {
+  if (!filePath || filePath == [NSNull null]) {
     _lutFilePath = nil;
   } else {
     _lutFilePath = filePath;
@@ -171,13 +171,13 @@ static const int kNumFaces = 5;
   _lutVignette = vignette;
   _radialBlur = radialBlur;
   _rgbSplit = rgbSplit;
-  if (blendImagePath1 == [NSNull null]) {
+  if (!blendImagePath1 || blendImagePath1 == [NSNull null]) {
     _blendImagePath1 = nil;
   } else {
     _blendImagePath1 = blendImagePath1;
   }
   _blendMode1 = blendMode1;
-  if (blendImagePath2 == [NSNull null]) {
+  if (!blendImagePath2 || blendImagePath2 == [NSNull null]) {
     _blendImagePath2 = nil;
   } else {
     _blendImagePath2 = blendImagePath2;
