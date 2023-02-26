@@ -1,0 +1,123 @@
+max_queue_size: -1
+
+input_side_packet: "input_video_path"
+input_side_packet: "output_video_path"
+
+# CaratFaceEffectList
+input_stream: "carat_face_effect_list"
+
+# ColorLut
+input_stream: "color_lut"
+
+# CaratFrameEffectList
+input_stream: "carat_frame_effect_list"
+
+# int
+input_side_packet: "num_faces"
+
+# VIDEO_PREP: Decodes an input video file into images and a video header.
+node {
+  calculator: "OpenCvVideoDecoderCalculator"
+  input_side_packet: "INPUT_FILE_PATH:input_video_path"
+  output_stream: "VIDEO:input_video_cpu"
+  output_stream: "VIDEO_PRESTREAM:video_header"
+}
+
+node: {
+  calculator: "ImageFrameToGpuBufferCalculator"
+  input_stream: "input_video_cpu"
+  output_stream: "input_video"
+}
+
+node {
+  calculator: "ColorLutFilterCalculator"
+  input_stream: "IMAGE_GPU:input_video"
+  input_stream: "COLOR_LUT:color_lut"
+  output_stream: "IMAGE_GPU:lut_filtered_video"
+}
+
+node {
+  calculator: "FaceGeometryEnvGeneratorCalculator"
+  output_side_packet: "ENVIRONMENT:environment"
+  node_options: {
+    [type.googleapis.com/mediapipe.FaceGeometryEnvGeneratorCalculatorOptions] {
+      environment: {
+        origin_point_location: TOP_LEFT_CORNER
+        perspective_camera: {
+          vertical_fov_degrees: 63.0  # 63 degrees
+          near: 1.0  # 1cm
+          far: 10000.0  # 100m
+        }
+      }
+    }
+  }
+}
+
+node {
+  calculator: "ImagePropertiesCalculator"
+  input_stream: "IMAGE_GPU:input_video"
+  output_stream: "SIZE:image_size"
+}
+
+node {
+  calculator: "FaceLandmarkFrontGpu"
+  input_stream: "IMAGE:input_video"
+  input_side_packet: "NUM_FACES:num_faces"
+  output_stream: "LANDMARKS:multi_face_landmarks"
+  output_stream: "DETECTIONS:face_detections"
+  output_stream: "ROIS_FROM_LANDMARKS:face_rects_from_landmarks"
+  output_stream: "ROIS_FROM_DETECTIONS:face_rects_from_detections"
+}
+
+node {
+  calculator: "FaceGeometryFromLandmarks"
+  input_stream: "MULTI_FACE_LANDMARKS:multi_face_landmarks"
+  input_stream: "IMAGE_SIZE:image_size"
+  input_side_packet: "ENVIRONMENT:environment"
+  output_stream: "MULTI_FACE_GEOMETRY:multi_face_geometry"
+}
+
+node {
+  calculator: "CaratFaceEffectRendererCalculator"
+  input_stream: "IMAGE_GPU:lut_filtered_video"
+  input_stream: "MULTI_FACE_GEOMETRY:multi_face_geometry"
+  input_stream: "CARAT_FACE_EFFECT_LIST:carat_face_effect_list"
+  input_side_packet: "ENVIRONMENT:environment"
+  output_stream: "IMAGE_GPU:face_effect_rendered_video"
+}
+
+node {
+  calculator: "CaratFrameEffectRendererCalculator"
+  input_stream: "IMAGE_GPU:face_effect_rendered_video"
+  input_stream: "CARAT_FRAME_EFFECT_LIST:carat_frame_effect_list"
+  output_stream: "IMAGE_GPU:output_video"
+}
+
+node: {
+  calculator: "GpuBufferToImageFrameCalculator"
+  input_stream: "output_video"
+  output_stream: "output_video_cpu"
+}
+
+# ENCODING(required): encode the video stream for the final cropped output.
+node {
+  calculator: "VideoPreStreamCalculator"
+  # Fetch frame format and dimension from input frames.
+  input_stream: "FRAME:output_video_cpu"
+  # Copying frame rate and duration from original video.
+  input_stream: "VIDEO_PRESTREAM:video_header"
+  output_stream: "output_frames_video_header"
+}
+
+node {
+  calculator: "OpenCvVideoEncoderCalculator"
+  input_stream: "VIDEO:output_video_cpu"
+  input_stream: "VIDEO_PRESTREAM:output_frames_video_header"
+  input_side_packet: "OUTPUT_FILE_PATH:output_video_path"
+  options: {
+    [mediapipe.OpenCvVideoEncoderCalculatorOptions.ext]: {
+      codec: "avc1"
+      video_format: "mp4"
+    }
+  }
+}

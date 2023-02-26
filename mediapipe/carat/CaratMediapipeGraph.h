@@ -21,4 +21,7 @@
 - (void)setFrameEffects:(NSArray *)effects;
 - (void)waitUntilIdle;
 @property(weak, nonatomic) id <CaratMediapipeGraphDelegate> delegate;
+@property(nonatomic) NSString *caratFaceEffectListString;
+@property(nonatomic) NSString *colorLutString;
+@property(nonatomic) NSString *caratFrameEffectListString;
 @end

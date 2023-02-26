@@ -24,9 +24,6 @@ static const int kNumFaces = 5;
 
 @interface CaratMediapipeGraph() <MPPGraphDelegate>
 @property(nonatomic) MPPGraph* mediapipeGraph;
-@property(nonatomic) NSString *caratFaceEffectListString;
-@property(nonatomic) NSString *colorLutString;
-@property(nonatomic) NSString *caratFrameEffectListString;
 @end
 
 @implementation CaratMediapipeGraph {
