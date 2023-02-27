@@ -1,7 +1,7 @@
 max_queue_size: -1
 
-input_side_packet: "input_video_path"
-input_side_packet: "output_video_path"
+# GpuBuffer
+input_stream: "input_video"
 
 # CaratFaceEffectList
 input_stream: "carat_face_effect_list"
@@ -15,19 +15,8 @@ input_stream: "carat_frame_effect_list"
 # int
 input_side_packet: "num_faces"
 
-# VIDEO_PREP: Decodes an input video file into images and a video header.
-node {
-  calculator: "OpenCvVideoDecoderCalculator"
-  input_side_packet: "INPUT_FILE_PATH:input_video_path"
-  output_stream: "VIDEO:input_video_cpu"
-  output_stream: "VIDEO_PRESTREAM:video_header"
-}
-
-node: {
-  calculator: "ImageFrameToGpuBufferCalculator"
-  input_stream: "input_video_cpu"
-  output_stream: "input_video"
-}
+# GpuBuffer
+output_stream: "output_video"
 
 node {
   calculator: "ColorLutFilterCalculator"
@@ -91,33 +80,4 @@ node {
   input_stream: "IMAGE_GPU:face_effect_rendered_video"
   input_stream: "CARAT_FRAME_EFFECT_LIST:carat_frame_effect_list"
   output_stream: "IMAGE_GPU:output_video"
-}
-
-node: {
-  calculator: "GpuBufferToImageFrameCalculator"
-  input_stream: "output_video"
-  output_stream: "output_video_cpu"
-}
-
-# ENCODING(required): encode the video stream for the final cropped output.
-node {
-  calculator: "VideoPreStreamCalculator"
-  # Fetch frame format and dimension from input frames.
-  input_stream: "FRAME:output_video_cpu"
-  # Copying frame rate and duration from original video.
-  input_stream: "VIDEO_PRESTREAM:video_header"
-  output_stream: "output_frames_video_header"
-}
-
-node {
-  calculator: "OpenCvVideoEncoderCalculator"
-  input_stream: "VIDEO:output_video_cpu"
-  input_stream: "VIDEO_PRESTREAM:output_frames_video_header"
-  input_side_packet: "OUTPUT_FILE_PATH:output_video_path"
-  options: {
-    [mediapipe.OpenCvVideoEncoderCalculatorOptions.ext]: {
-      codec: "avc1"
-      video_format: "mp4"
-    }
-  }
 }

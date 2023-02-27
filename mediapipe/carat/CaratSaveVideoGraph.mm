@@ -8,10 +8,10 @@
 
 static NSString* const kGraphName = @"carat_save_video_graph";
 
-static const char* kInputVideoPathInputSidePacket = "input_video_path";
-static const char* kOutputVideoPathInputSidePacket = "output_video_path";
-static const char* kNumFacesInputSidePacket = "num_faces";
+static const char* kInputStream = "input_video";
+static const char* kOutputStream = "output_video";
 
+static const char* kNumFacesInputSidePacket = "num_faces";
 static const char* kCaratFaceEffectListInputStream = "carat_face_effect_list";
 static const char* kColorLutInputStream = "color_lut";
 static const char* kCaratFrameEffectListInputStream = "carat_frame_effect_list";
@@ -26,16 +26,7 @@ static const int kNumFaces = 5;
 @end
 
 @implementation CaratSaveVideoGraph {
-  NSString *_lutFilePath;
-  float _lutIntensity;
-  float _lutGrain;
-  float _lutVignette;
-  float _radialBlur;
-  float _rgbSplit;
-  NSString *_blendImagePath1;
-  int _blendMode1;
-  NSString *_blendImagePath2;
-  int _blendMode2;
+  CMTime _lastTimestamp;
 }
 
 #pragma mark - Cleanup methods
@@ -68,9 +59,7 @@ static const int kNumFaces = 5;
     return newGraph;
 }
 
-- (instancetype)initWithInputVideoPath:(NSString *)inputVideoPath
-  outputVideoPath:(NSString *)outputVideoPath
-  caratFaceEffectListString:(NSString *)caratFaceEffectListString
+- (instancetype)initWithCaratFaceEffectListString:(NSString *)caratFaceEffectListString
   colorLutString:(NSString *)colorLutString
   caratFrameEffectListString:(NSString *)caratFrameEffectListString {
     self = [super init];
@@ -78,8 +67,7 @@ static const int kNumFaces = 5;
         self.mediapipeGraph = [[self class] loadGraphFromResource:kGraphName];
         self.mediapipeGraph.delegate = self;
 
-        [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<std::string>([inputVideoPath UTF8String])) named:kInputVideoPathInputSidePacket];
-        [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<std::string>([outputVideoPath UTF8String])) named:kOutputVideoPathInputSidePacket];
+        [self.mediapipeGraph addFrameOutputStream:kOutputStream outputPacketType:MPPPacketTypePixelBuffer];
         [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<int>(kNumFaces)) named:kNumFacesInputSidePacket];
 
         self.caratFaceEffectListString = caratFaceEffectListString;
@@ -96,8 +84,18 @@ static const int kNumFaces = 5;
     } else if (![self.mediapipeGraph waitUntilIdleWithError:&error]) {
         NSLog(@"Failed to complete graph initial run: %@", error);
     }
+}
 
-    mediapipe::Timestamp graphTimestamp(static_cast<mediapipe::TimestampBaseType>(0));
+- (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer timestamp:(CMTime)timestamp {
+    if (CMTimeCompare(_lastTimestamp, timestamp) == 0) {
+      return;
+    }
+    _lastTimestamp = timestamp;
+
+    mediapipe::Timestamp graphTimestamp(static_cast<mediapipe::TimestampBaseType>(
+        mediapipe::Timestamp::kTimestampUnitsPerSecond * CMTimeGetSeconds(timestamp)));
+
+    [self.mediapipeGraph sendPixelBuffer:pixelBuffer intoStream:kInputStream packetType:MPPPacketTypePixelBuffer timestamp:graphTimestamp];
 
     const mediapipe::CaratFaceEffectList& caratFaceEffectList = mediapipe::ParseTextProtoOrDie<mediapipe::CaratFaceEffectList>([self.caratFaceEffectListString UTF8String]);
     mediapipe::Packet caratFaceEffectListPacket =
@@ -115,14 +113,14 @@ static const int kNumFaces = 5;
     [self.mediapipeGraph movePacket:std::move(caratFrameEffectListPacket) intoStream:kCaratFrameEffectListInputStream error:nil];
 }
 
-- (BOOL)waitUntilDone {
-  return [self.mediapipeGraph waitUntilDoneWithError:nil];
-}
-
 #pragma mark - MPPGraphDelegate methods
 
 // Invoked on a Mediapipe worker thread.
-- (void)mediapipeGraph:(MPPGraph*)graph didOutputPixelBuffer:(CVPixelBufferRef)pixelBuffer fromStream:(const std::string&)streamName {}
+- (void)mediapipeGraph:(MPPGraph*)graph didOutputPixelBuffer:(CVPixelBufferRef)pixelBuffer fromStream:(const std::string&)streamName {
+    if (streamName == kOutputStream) {
+        [_delegate saveGraph:self didOutputPixelBuffer:pixelBuffer];
+    }
+}
 
 // Invoked on a Mediapipe worker thread.
 - (void)mediapipeGraph:(MPPGraph*)graph didOutputPacket:(const ::mediapipe::Packet&)packet fromStream:(const std::string&)streamName {}

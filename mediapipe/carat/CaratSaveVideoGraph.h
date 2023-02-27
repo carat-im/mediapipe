@@ -4,12 +4,16 @@
 
 @class CaratSaveVideoGraph;
 
+@protocol CaratSaveVideoGraphDelegate <NSObject>
+- (void)saveGraph:(CaratSaveVideoGraph*)graph didOutputPixelBuffer:(CVPixelBufferRef)pixelBuffer;
+@end
+
+
 @interface CaratSaveVideoGraph: NSObject
-- (instancetype)initWithInputVideoPath:(NSString *)inputVideoPath
-  outputVideoPath:(NSString *)outputVideoPath
-  caratFaceEffectListString:(NSString *)caratFaceEffectListString
+- (instancetype)initWithCaratFaceEffectListString:(NSString *)caratFaceEffectListString
   colorLutString:(NSString *)colorLutString
   caratFrameEffectListString:(NSString *)caratFrameEffectListString;
 - (void)startGraph;
-- (BOOL)waitUntilDone;
+- (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer timestamp:(CMTime)timestamp;
+@property(weak, nonatomic) id <CaratSaveVideoGraphDelegate> delegate;
 @end

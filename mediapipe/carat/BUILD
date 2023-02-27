@@ -81,11 +81,6 @@ objc_library(
             "//mediapipe/carat/calculators:carat_face_effect_renderer_calculator",
             "//mediapipe/carat/calculators:color_lut_filter_calculator",
             "//mediapipe/carat/calculators:carat_frame_effect_renderer_calculator",
-            "//mediapipe/calculators/video:opencv_video_decoder_calculator",
-            "//mediapipe/calculators/video:opencv_video_encoder_calculator",
-            "//mediapipe/calculators/video:video_pre_stream_calculator",
-            "//mediapipe/gpu:image_frame_to_gpu_buffer_calculator",
-            "//mediapipe/gpu:gpu_buffer_to_image_frame_calculator",
         ],
     }),
 )
@@ -118,7 +113,6 @@ mediapipe_binary_graph(
     graph = "carat_save_video_graph.pbtxt",
     output_name = "carat_save_video_graph.binarypb",
     deps = [
-        "//mediapipe/calculators/core:flow_limiter_calculator",
         "//mediapipe/calculators/core:gate_calculator",
         "//mediapipe/calculators/core:immediate_mux_calculator",
         "//mediapipe/calculators/core:split_proto_list_calculator",
@@ -133,10 +127,5 @@ mediapipe_binary_graph(
         "//mediapipe/modules/face_geometry:env_generator_calculator",
         "//mediapipe/modules/face_geometry:face_geometry_from_landmarks",
         "//mediapipe/modules/face_landmark:face_landmark_front_gpu",
-        "//mediapipe/calculators/video:opencv_video_decoder_calculator",
-        "//mediapipe/calculators/video:opencv_video_encoder_calculator",
-        "//mediapipe/calculators/video:video_pre_stream_calculator",
-        "//mediapipe/gpu:image_frame_to_gpu_buffer_calculator",
-        "//mediapipe/gpu:gpu_buffer_to_image_frame_calculator",
     ],
 )
