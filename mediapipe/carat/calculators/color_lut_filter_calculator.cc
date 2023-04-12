@@ -284,6 +284,8 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       if (vignette != 0.0) {
         gl_FragColor = vec4(vec3(gl_FragColor * vignette_filter(sample_coordinate, (1.0 - vignette * intensity))), 1.0);
       }
+
+      gl_FragColor = vec4(pow(gl_FragColor.rgb, vec3(1.2)), gl_FragColor.a);
     }
   )";
 
