@@ -9,7 +9,7 @@
 @end
 
 @interface CaratMediapipeGraph: NSObject
-- (instancetype)init;
+- (instancetype)initWithApplyGamma:(bool)applyGamma;
 - (void)startGraph;
 - (void)sendPixelBuffer:(CVPixelBufferRef)pixelBuffer timestamp:(CMTime)timestamp;
 - (void)setFaceEffects:(NSArray *)effects;

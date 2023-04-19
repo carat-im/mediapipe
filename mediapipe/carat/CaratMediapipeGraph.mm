@@ -20,6 +20,8 @@ static const char* kCaratFrameEffectListInputStream = "carat_frame_effect_list";
 static const char* kLandmarksOutputStream = "multi_face_landmarks";
 static const char* kMultiFaceGeometryStream = "multi_face_geometry";
 
+static const char* kApplyGammaInputSidePacket = "apply_gamma";
+
 static const int kNumFaces = 5;
 
 @interface CaratMediapipeGraph() <MPPGraphDelegate>
@@ -71,7 +73,7 @@ static const int kNumFaces = 5;
     return newGraph;
 }
 
-- (instancetype)init {
+- (instancetype)initWithApplyGamma:(bool)applyGamma {
     self = [super init];
     if (self) {
         self.mediapipeGraph = [[self class] loadGraphFromResource:kGraphName];
@@ -82,6 +84,7 @@ static const int kNumFaces = 5;
         [self.mediapipeGraph addFrameOutputStream:kLandmarksOutputStream outputPacketType:MPPPacketTypeRaw];
         [self.mediapipeGraph addFrameOutputStream:kMultiFaceGeometryStream outputPacketType:MPPPacketTypeRaw];
         [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<int>(kNumFaces)) named:kNumFacesInputSidePacket];
+        [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<bool>(applyGamma)) named:kApplyGammaInputSidePacket];
 
         self.caratFaceEffectListString = @"";
         self.colorLutString = @"";

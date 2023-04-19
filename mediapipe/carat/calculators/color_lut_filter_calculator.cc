@@ -26,6 +26,7 @@ enum { ATTRIB_VERTEX, ATTRIB_TEXTURE_POSITION, NUM_ATTRIBUTES };
 
 constexpr char kImageGpuTag[] = "IMAGE_GPU";
 constexpr char kColorLutTag[] = "COLOR_LUT";
+constexpr char kApplyGammaTag[] = "APPLY_GAMMA";
 
 } // namespace
 
@@ -78,6 +79,8 @@ absl::Status ColorLutFilterCalculator::GetContract(CalculatorContract* cc) {
   cc->Inputs().Tag(kColorLutTag).Set<ColorLut>();
 
   cc->Outputs().Tag(kImageGpuTag).Set<GpuBuffer>();
+
+  cc->InputSidePackets().Tag(kApplyGammaTag).Set<bool>();
 
   return absl::OkStatus();
 }
@@ -158,6 +161,8 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
     uniform sampler2D blend_image_texture_2;
     uniform int blend_mode_2;
     uniform int has_blend_image_texture_2;
+
+    uniform int apply_gamma;
 
     vec4 lookup_table(vec4 color) {
       float blueColor = color.b * 63.0;
@@ -285,7 +290,9 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
         gl_FragColor = vec4(vec3(gl_FragColor * vignette_filter(sample_coordinate, (1.0 - vignette * intensity))), 1.0);
       }
 
-      gl_FragColor = vec4(pow(gl_FragColor.rgb, vec3(1.2)), gl_FragColor.a);
+      if (apply_gamma == 1) {
+        gl_FragColor = vec4(pow(gl_FragColor.rgb, vec3(1.2)), gl_FragColor.a);
+      }
     }
   )";
 
@@ -459,6 +466,9 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
     glUniform1f(glGetUniformLocation(program_, "rgb_split"), color_lut.rgb_split());
     glUniform1i(glGetUniformLocation(program_, "blend_mode_1"), color_lut.blend_mode_1());
     glUniform1i(glGetUniformLocation(program_, "blend_mode_2"), color_lut.blend_mode_2());
+
+    bool apply_gamma = cc->InputSidePackets().Tag(kApplyGammaTag).Get<bool>();
+    glUniform1i(glGetUniformLocation(program_, "apply_gamma"), apply_gamma ? 1 : 0);
 
     glBindVertexArray(vao_);
 

@@ -22,6 +22,9 @@ output_stream: "multi_face_landmarks"
 # std::vector<face_geometry::FaceGeometry>
 output_stream: "multi_face_geometry"
 
+# bool
+input_side_packet: "apply_gamma"
+
 node {
   calculator: "FlowLimiterCalculator"
   input_stream: "input_video"
@@ -37,6 +40,7 @@ node {
   calculator: "ColorLutFilterCalculator"
   input_stream: "IMAGE_GPU:throttled_input_video"
   input_stream: "COLOR_LUT:color_lut"
+  input_side_packet: "APPLY_GAMMA:apply_gamma"
   output_stream: "IMAGE_GPU:lut_filtered_video"
 }
 

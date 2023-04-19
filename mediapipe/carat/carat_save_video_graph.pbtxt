@@ -18,10 +18,14 @@ input_side_packet: "num_faces"
 # GpuBuffer
 output_stream: "output_video"
 
+# bool
+input_side_packet: "apply_gamma"
+
 node {
   calculator: "ColorLutFilterCalculator"
   input_stream: "IMAGE_GPU:input_video"
   input_stream: "COLOR_LUT:color_lut"
+  input_side_packet: "APPLY_GAMMA:apply_gamma"
   output_stream: "IMAGE_GPU:lut_filtered_video"
 }
 

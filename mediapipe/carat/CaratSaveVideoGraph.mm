@@ -16,6 +16,8 @@ static const char* kCaratFaceEffectListInputStream = "carat_face_effect_list";
 static const char* kColorLutInputStream = "color_lut";
 static const char* kCaratFrameEffectListInputStream = "carat_frame_effect_list";
 
+static const char* kApplyGammaInputSidePacket = "apply_gamma";
+
 static const int kNumFaces = 5;
 
 @interface CaratSaveVideoGraph() <MPPGraphDelegate>
@@ -69,6 +71,7 @@ static const int kNumFaces = 5;
 
         [self.mediapipeGraph addFrameOutputStream:kOutputStream outputPacketType:MPPPacketTypePixelBuffer];
         [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<int>(kNumFaces)) named:kNumFacesInputSidePacket];
+        [self.mediapipeGraph setSidePacket:(mediapipe::MakePacket<bool>(NO)) named:kApplyGammaInputSidePacket];
 
         self.caratFaceEffectListString = caratFaceEffectListString;
         self.colorLutString = colorLutString;
