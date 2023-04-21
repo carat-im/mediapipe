@@ -41,6 +41,8 @@ static const int kNumFaces = 5;
   int _blendMode1;
   NSString *_blendImagePath2;
   int _blendMode2;
+  float _exposure;
+  float _contrast;
 }
 
 #pragma mark - Cleanup methods
@@ -159,7 +161,8 @@ static const int kNumFaces = 5;
   radialBlur:(float)radialBlur 
   rgbSplit:(float)rgbSplit
   blendImagePath1:(NSString *)blendImagePath1 blendMode1:(int)blendMode1
-  blendImagePath2:(NSString *)blendImagePath2 blendMode2:(int)blendMode2 {
+  blendImagePath2:(NSString *)blendImagePath2 blendMode2:(int)blendMode2
+  exposure:(float)exposure contrast:(float)contrast {
   if (!filePath || filePath == [NSNull null]) {
     _lutFilePath = nil;
   } else {
@@ -184,6 +187,9 @@ static const int kNumFaces = 5;
   }
   _blendMode2 = blendMode2;
 
+  _exposure = exposure;
+  _contrast = contrast;
+
   [self makeColorLutString];
 }
 
@@ -204,7 +210,7 @@ static const int kNumFaces = 5;
 }
 
 - (void)makeColorLutString {
-  self.colorLutString = [NSString stringWithFormat:@"intensity: %f grain: %f vignette: %f radial_blur: %f rgb_split: %f", _lutIntensity, _lutGrain, _lutVignette, _radialBlur, _rgbSplit];
+  self.colorLutString = [NSString stringWithFormat:@"intensity: %f grain: %f vignette: %f radial_blur: %f rgb_split: %f exposure: %f contrast: %f", _lutIntensity, _lutGrain, _lutVignette, _radialBlur, _rgbSplit, _exposure, _contrast];
 
   if (_lutFilePath != nil) {
     self.colorLutString = [self.colorLutString stringByAppendingString:[NSString stringWithFormat:@" lut_path: \"%@\"", _lutFilePath]];

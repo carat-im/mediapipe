@@ -164,6 +164,9 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
 
     uniform int apply_gamma;
 
+    uniform float exposure;
+    uniform float contrast;
+
     vec4 lookup_table(vec4 color) {
       float blueColor = color.b * 63.0;
 
@@ -238,6 +241,57 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       return s*d;
     }
 
+    vec3 exposure_filter(vec3 color, float exposure) {
+      return color * pow(2.0, exposure);
+    }
+
+    vec3 contrast_filter(vec3 color, float contrast) {
+      return (color - 0.5) * (contrast + 1.0) + 0.5;
+    }
+
+    vec3 saturation_filter(vec3 color, float saturation) {
+      vec3 weights = vec3(0.2125, 0.7154, 0.0721); // sums to 1
+      float luminance = dot(color, weights);
+      return mix(vec3(luminance), color, vec3((saturation + 1.0) / 2.0) * 5.0);
+    }
+
+    // Y'UV (BT.709) to linear RGB
+    // Values are from https://en.wikipedia.org/wiki/YUV
+    vec3 yuv2rgb(vec3 yuv) {
+        const mat3 m = mat3(+1.00000, +1.00000, +1.00000,  // 1st column
+                            +0.00000, -0.21482, +2.12798,  // 2nd column
+                            +1.28033, -0.38059, +0.00000); // 3rd column
+        return m * yuv;
+    }
+
+    // Linear RGB to Y'UV (BT.709)
+    // Values are from https://en.wikipedia.org/wiki/YUV
+    vec3 rgb2yuv(vec3 rgb) {
+        const mat3 m = mat3(+0.21260, -0.09991, +0.61500,  // 1st column
+                            +0.71520, -0.33609, -0.55861,  // 2nd column
+                            +0.07220, +0.43600, -0.05639); // 3rd column
+        return m * rgb;
+    }
+
+    vec3 temperature_tint_filter(vec3 color, float temperature, float tint) {
+      const float scale = 0.10;
+      return clamp(yuv2rgb(rgb2yuv(color) + temperature * scale * vec3(0.0, -1.0, 1.0) + tint * scale * vec3(0.0, 1.0, 1.0)), 0.0, 1.0);
+    }
+
+    vec3 highlight_filter(vec3 color, float highlight) {
+      vec3 weights = vec3(0.2125, 0.7154, 0.0721); // sums to 1
+      float luminance = dot(color, weights);
+      luminance = smoothstep(0.5, 1.0, luminance);
+      return color + luminance * highlight;
+    }
+
+    vec3 shadow_filter(vec3 color, float shadow) {
+      vec3 weights = vec3(0.2125, 0.7154, 0.0721); // sums to 1
+      float luminance = dot(color, weights);
+      luminance = smoothstep(0.0, 0.5, luminance);
+      return color * pow(2.0, (1.0 - luminance) * shadow);
+    }
+
     void main() {
       if (radial_blur != 0.0) {
         gl_FragColor = blur_radial(frame, sample_coordinate, radial_blur);
@@ -289,6 +343,14 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       if (vignette != 0.0) {
         gl_FragColor = vec4(vec3(gl_FragColor * vignette_filter(sample_coordinate, (1.0 - vignette * intensity))), 1.0);
       }
+
+      // todo: 적용 순서 검토
+      gl_FragColor = vec4(exposure_filter(gl_FragColor.rgb, exposure), gl_FragColor.a);
+      // gl_FragColor = vec4(contrast_filter(gl_FragColor.rgb, contrast), gl_FragColor.a);
+      // gl_FragColor = vec4(saturation_filter(gl_FragColor.rgb, saturation), gl_FragColor.a);
+      // gl_FragColor = vec4(temperature_tint_filter(gl_FragColor.rgb, temperature, tint), gl_FragColor.a);
+      // gl_FragColor = vec4(highlight_filter(gl_FragColor.rgb, highlight), gl_FragColor.a);
+      gl_FragColor = vec4(shadow_filter(gl_FragColor.rgb, contrast), gl_FragColor.a);
 
       if (apply_gamma == 1) {
         gl_FragColor = vec4(pow(gl_FragColor.rgb, vec3(1.2)), gl_FragColor.a);
@@ -466,6 +528,8 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
     glUniform1f(glGetUniformLocation(program_, "rgb_split"), color_lut.rgb_split());
     glUniform1i(glGetUniformLocation(program_, "blend_mode_1"), color_lut.blend_mode_1());
     glUniform1i(glGetUniformLocation(program_, "blend_mode_2"), color_lut.blend_mode_2());
+    glUniform1f(glGetUniformLocation(program_, "exposure"), color_lut.exposure());
+    glUniform1f(glGetUniformLocation(program_, "contrast"), color_lut.contrast());
 
     bool apply_gamma = cc->InputSidePackets().Tag(kApplyGammaTag).Get<bool>();
     glUniform1i(glGetUniformLocation(program_, "apply_gamma"), apply_gamma ? 1 : 0);
