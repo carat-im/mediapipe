@@ -166,6 +166,13 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
 
     uniform float exposure;
     uniform float contrast;
+    uniform float temperature;
+    uniform float tint;
+    uniform float saturation;
+    uniform float highlight;
+    uniform float shadow;
+    uniform float sharpen;
+    uniform float vibrance;
 
     vec4 lookup_table(vec4 color) {
       float blueColor = color.b * 63.0;
@@ -249,10 +256,97 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       return (color - 0.5) * (contrast + 1.0) + 0.5;
     }
 
+    float rgb2h(vec3 rgb) {
+      float r = rgb[0];
+      float g = rgb[1];
+      float b = rgb[2];
+
+      float M = max(r, max(g, b));
+      float m = min(r, min(g, b));
+
+      float h;
+      if (M == m) {
+          h = 0.0;
+      } else if (m == b) {
+          h = 60.0 * (g - r) / (M - m) + 60.0;
+      } else if (m == r) {
+          h = 60.0 * (b - g) / (M - m) + 180.0;
+      } else if (m == g) {
+          h = 60.0 * (r - b) / (M - m) + 300.0;
+      } else {
+          h = 0.0;
+      }
+      h /= 360.0;
+      if (h < 0.0) {
+          h = h + 1.0;
+      } else if (h > 1.0) {
+          h = h - 1.0;
+      }
+      return h;
+    }
+
+    float rgb2s4hsv(vec3 rgb) {
+      float r = rgb[0];
+      float g = rgb[1];
+      float b = rgb[2];
+      float M = max(r, max(g, b));
+      float m = min(r, min(g, b));
+
+      if (M < 1e-10) return 0.0;
+      return (M - m) / M;
+    }
+
+    vec3 rgb2hsv(vec3 rgb) {
+      float h = rgb2h(rgb);
+      float s = rgb2s4hsv(rgb);
+      float v = max(rgb.x, max(rgb.y, rgb.z));
+      return vec3(h, s, v);
+    }
+
+    vec3 hsv2rgb(vec3 hsv) {
+      vec3 rgb;
+
+      float r, g, b, h, s, v;
+
+      h = hsv.x;
+      s = hsv.y;
+      v = hsv.z;
+
+      if (s <= 0.001) {
+          r = g = b = v;
+      } else {
+          float f, p, q, t;
+          int i;
+          h *= 6.0;
+          i = int(floor(h));
+          f = h - float(i);
+          p = v * (1.0 - s);
+          q = v * (1.0 - (s * f));
+          t = v * (1.0 - (s * (1.0 - f)));
+          if (i == 0 || i == 6) {
+              r = v; g = t; b = p;
+          } else if (i == 1) {
+              r = q; g = v; b = p;
+          } else if (i == 2) {
+              r = p; g = v; b = t;
+          } else if (i == 3) {
+              r = p; g = q; b = v;
+          } else if (i == 4) {
+              r = t; g = p; b = v;
+          } else if (i == 5) {
+              r = v; g = p; b = q;
+          }
+      }
+      rgb.x = r;
+      rgb.y = g;
+      rgb.z = b;
+      return rgb;
+    }
+
     vec3 saturation_filter(vec3 color, float saturation) {
-      vec3 weights = vec3(0.2125, 0.7154, 0.0721); // sums to 1
-      float luminance = dot(color, weights);
-      return mix(vec3(luminance), color, vec3((saturation + 1.0) / 2.0) * 5.0);
+      vec3 hsv = rgb2hsv(clamp(color, 0.0, 1.0));
+      float s = clamp(hsv[1] * (saturation + 1.0), 0.0, 1.0);
+      return hsv2rgb(vec3(hsv[0], s, hsv[2]));
     }
 
     // Y'UV (BT.709) to linear RGB
@@ -282,19 +376,141 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       vec3 weights = vec3(0.2125, 0.7154, 0.0721); // sums to 1
       float luminance = dot(color, weights);
       luminance = smoothstep(0.5, 1.0, luminance);
-      return color + luminance * highlight;
+      return exposure_filter(color, luminance * highlight);
     }
 
     vec3 shadow_filter(vec3 color, float shadow) {
       vec3 weights = vec3(0.2125, 0.7154, 0.0721); // sums to 1
       float luminance = dot(color, weights);
       luminance = smoothstep(0.0, 0.5, luminance);
-      return color * pow(2.0, (1.0 - luminance) * shadow);
+      return exposure_filter(color, (1.0 - luminance) * shadow);
+    }
+
+    vec3 sharpen_filter(sampler2D tex, vec2 uv, vec2 size, float sharpen) {
+      float neighbor = sharpen * -1.0;
+      float c = sharpen * 4.0 + 1.0;
+      vec2 unit = 1.0 / size;
+
+      vec3 up = texture2D(tex, vec2(uv.x, uv.y - unit.y)).rgb * neighbor;
+      vec3 right = texture2D(tex, vec2(uv.x + unit.x, uv.y)).rgb * neighbor;
+      vec3 down = texture2D(tex, vec2(uv.x, uv.y + unit.y)).rgb * neighbor;
+      vec3 left = texture2D(tex, vec2(uv.x - unit.x, uv.y)).rgb * neighbor;
+      vec3 center = texture2D(tex, uv).rgb * c;
+      return center + up + right + down + left;
+    }
+
+    int modi(int x, int y) {
+      return x - y * (x / y);
+    }
+
+    int and(int a, int b) {
+      int result = 0;
+      int n = 1;
+      const int BIT_COUNT = 32;
+
+      for(int i = 0; i < BIT_COUNT; i++) {
+        if ((modi(a, 2) == 1) && (modi(b, 2) == 1)) {
+          result += n;
+        }
+
+        a = a / 2;
+        b = b / 2;
+        n = n * 2;
+
+        if (!(a > 0 && b > 0)) break;
+      }
+      return result;
+    }
+
+    //r,g,b 0.0 to 1.0,  vibrance 1.0 no change, 0.0 image B&W.  
+    vec3 vibrance_filter(vec3 inCol, float v) {
+      float vibrance = v + 1.0;
+      vec3 outCol;
+      if (vibrance <= 1.0) {
+        float avg = dot(inCol, vec3(0.3, 0.6, 0.1));
+        outCol = mix(vec3(avg), inCol, vibrance); 
+      } else {
+        float hue_a, a, f, p1, p2, p3, i, h, s, v, amt, _max, _min, dlt;
+        float br1, br2, br3, br4, br5, br2_or_br1, br3_or_br1, br4_or_br1, br5_or_br1;
+        int use;
+
+        _min = min(min(inCol.r, inCol.g), inCol.b);
+        _max = max(max(inCol.r, inCol.g), inCol.b);
+        dlt = _max - _min + 0.00001 /*Hack to fix divide zero infinities*/;
+        h = 0.0;
+        v = _max;
+
+        br1 = step(_max, 0.0);
+        s = (dlt / _max) * (1.0 - br1);
+        h = -1.0 * br1;
+
+        br2 = 1.0 - step(_max - inCol.r, 0.0); 
+        br2_or_br1 = max(br2, br1);
+        h = ((inCol.g - inCol.b) / dlt) * (1.0 - br2_or_br1) + (h*br2_or_br1);
+
+        br3 = 1.0 - step(_max - inCol.g, 0.0); 
+          
+        br3_or_br1 = max(br3, br1);
+        h = (2.0 + (inCol.b - inCol.r) / dlt) * (1.0 - br3_or_br1) + (h*br3_or_br1);
+
+        br4 = 1.0 - br2*br3;
+        br4_or_br1 = max(br4, br1);
+        h = (4.0 + (inCol.r - inCol.g) / dlt) * (1.0 - br4_or_br1) + (h*br4_or_br1);
+
+        h = h*(1.0 - br1);
+
+        hue_a = abs(h); // between h of -1 and 1 are skin tones
+        a = dlt;      // Reducing enhancements on small rgb differences
+
+        // Reduce the enhancements on skin tones.    
+        a = step(1.0, hue_a) * a * (hue_a * 0.67 + 0.33) + step(hue_a, 1.0) * a;                                    
+        a *= (vibrance - 1.0);
+        s = (1.0 - a) * s + a * pow(s, 0.25);
+
+        i = floor(h);
+        f = h - i;
+
+        p1 = v * (1.0 - s);
+        p2 = v * (1.0 - (s * f));
+        p3 = v * (1.0 - (s * (1.0 - f)));
+
+        inCol = vec3(0.0); 
+        i += 6.0;
+        use = int(pow(2.0,mod(i,6.0)));
+        a = float(and(use , 1)); // i == 0;
+        use /= 2;
+        inCol += a * vec3(v, p3, p1);
+
+        a = float(and(use , 1)); // i == 1;
+        use /= 2;
+        inCol += a * vec3(p2, v, p1); 
+
+        a = float( and(use,1)); // i == 2;
+        use /= 2;
+        inCol += a * vec3(p1, v, p3);
+
+        a = float(and(use, 1)); // i == 3;
+        use /= 2;
+        inCol += a * vec3(p1, p2, v);
+
+        a = float(and(use, 1)); // i == 4;
+        use /= 2;
+        inCol += a * vec3(p3, p1, v);
+
+        a = float(and(use, 1)); // i == 5;
+        use /= 2;
+        inCol += a * vec3(v, p1, p2);
+
+        outCol = inCol;
+      }
+      return outCol;
     }
 
     void main() {
       if (radial_blur != 0.0) {
         gl_FragColor = blur_radial(frame, sample_coordinate, radial_blur);
+      } else if (sharpen != 0.0) {
+        gl_FragColor = vec4(sharpen_filter(frame, sample_coordinate, size, sharpen), gl_FragColor.a);
       } else {
         gl_FragColor = texture2D(frame, sample_coordinate);
       }
@@ -313,6 +529,14 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       if (has_lut_texture == 1) {
         gl_FragColor = lookup_table(gl_FragColor);
       }
+
+      gl_FragColor = vec4(exposure_filter(gl_FragColor.rgb, exposure), gl_FragColor.a);
+      gl_FragColor = vec4(contrast_filter(gl_FragColor.rgb, contrast), gl_FragColor.a);
+      gl_FragColor = vec4(temperature_tint_filter(gl_FragColor.rgb, temperature, tint), gl_FragColor.a);
+      gl_FragColor = vec4(saturation_filter(gl_FragColor.rgb, saturation), gl_FragColor.a);
+      gl_FragColor = vec4(highlight_filter(gl_FragColor.rgb, highlight), gl_FragColor.a);
+      gl_FragColor = vec4(shadow_filter(gl_FragColor.rgb, shadow), gl_FragColor.a);
+      gl_FragColor = vec4(vibrance_filter(gl_FragColor.rgb, vibrance), gl_FragColor.a);
 
       if (has_blend_image_texture_1 == 1) {
         vec4 blend_image_color = texture2D(blend_image_texture_1, sample_coordinate);
@@ -343,14 +567,6 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       if (vignette != 0.0) {
         gl_FragColor = vec4(vec3(gl_FragColor * vignette_filter(sample_coordinate, (1.0 - vignette * intensity))), 1.0);
       }
-
-      // todo: 적용 순서 검토
-      gl_FragColor = vec4(exposure_filter(gl_FragColor.rgb, exposure), gl_FragColor.a);
-      // gl_FragColor = vec4(contrast_filter(gl_FragColor.rgb, contrast), gl_FragColor.a);
-      // gl_FragColor = vec4(saturation_filter(gl_FragColor.rgb, saturation), gl_FragColor.a);
-      // gl_FragColor = vec4(temperature_tint_filter(gl_FragColor.rgb, temperature, tint), gl_FragColor.a);
-      // gl_FragColor = vec4(highlight_filter(gl_FragColor.rgb, highlight), gl_FragColor.a);
-      gl_FragColor = vec4(shadow_filter(gl_FragColor.rgb, contrast), gl_FragColor.a);
 
       if (apply_gamma == 1) {
         gl_FragColor = vec4(pow(gl_FragColor.rgb, vec3(1.2)), gl_FragColor.a);
@@ -530,6 +746,13 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
     glUniform1i(glGetUniformLocation(program_, "blend_mode_2"), color_lut.blend_mode_2());
     glUniform1f(glGetUniformLocation(program_, "exposure"), color_lut.exposure());
     glUniform1f(glGetUniformLocation(program_, "contrast"), color_lut.contrast());
+    glUniform1f(glGetUniformLocation(program_, "temperature"), color_lut.temperature());
+    glUniform1f(glGetUniformLocation(program_, "tint"), color_lut.tint());
+    glUniform1f(glGetUniformLocation(program_, "saturation"), color_lut.saturation());
+    glUniform1f(glGetUniformLocation(program_, "highlight"), color_lut.highlight());
+    glUniform1f(glGetUniformLocation(program_, "shadow"), color_lut.shadow());
+    glUniform1f(glGetUniformLocation(program_, "sharpen"), color_lut.sharpen());
+    glUniform1f(glGetUniformLocation(program_, "vibrance"), color_lut.vibrance());
 
     bool apply_gamma = cc->InputSidePackets().Tag(kApplyGammaTag).Get<bool>();
     glUniform1i(glGetUniformLocation(program_, "apply_gamma"), apply_gamma ? 1 : 0);

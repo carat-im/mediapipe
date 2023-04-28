@@ -18,7 +18,12 @@
   rgbSplit:(float)rgbSplit
   blendImagePath1:(NSString *)blendImagePath1 blendMode1:(int)blendMode1
   blendImagePath2:(NSString *)blendImagePath2 blendMode2:(int)blendMode2
-  exposure:(float)exposure contrast:(float)contrast;
+  exposure:(float)exposure contrast:(float)contrast
+  temperature:(float)temperature tint:(float)tint
+  saturation:(float)saturation
+  highlight:(float)highlight shadow:(float)shadow
+  sharpen:(float)sharpen
+  vibrance:(float)vibrance;
 - (void)setFrameEffects:(NSArray *)effects;
 - (void)waitUntilIdle;
 @property(weak, nonatomic) id <CaratMediapipeGraphDelegate> delegate;

@@ -18,4 +18,11 @@ message ColorLut {
   optional int32 blend_mode_2 = 10;
   optional float exposure = 11;
   optional float contrast = 12;
+  optional float temperature = 13;
+  optional float tint = 14;
+  optional float saturation = 15;
+  optional float highlight = 16;
+  optional float shadow = 17;
+  optional float sharpen = 18;
+  optional float vibrance = 19;
 }
