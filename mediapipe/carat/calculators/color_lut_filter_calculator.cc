@@ -506,6 +506,88 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       return outCol;
     }
 
+    float rgb2s4hsl(vec3 rgb) {
+      float r = rgb[0];
+      float g = rgb[1];
+      float b = rgb[2];
+      float M = max(r, max(g, b));
+      float m = min(r, min(g, b));
+
+      if (M - m < 1e-10) return 0.0;
+      return (M - m) / (1.0 - abs(M + m - 1.0));
+    }
+
+    float rgb2L(vec3 rgb) {
+      float m = min(min(rgb.x, rgb.y), rgb.z);
+      float M = max(max(rgb.x, rgb.y), rgb.z);
+
+      return (M + m) * 0.5;
+    }
+
+    vec3 rgb2hsl(vec3 rgb) {
+      vec3 hsl;
+
+      hsl.x = rgb2h(rgb);
+      hsl.y = rgb2s4hsl(rgb);
+      hsl.z = rgb2L(rgb);
+
+      return hsl;
+    }
+
+    float h2rgb(float f1, float f2, float hue) {
+      if (hue < 0.0)
+        hue += 1.0;
+      else if (hue >= 1.0)
+        hue -= 1.0;
+
+      float res;
+      if ((6.0 * hue) < 1.0)
+        res = f1 + (f2 - f1) * 6.0 * hue;
+      else if ((2.0 * hue) < 1.0)
+        res = f2;
+      else if ((3.0 * hue) < 2.0)
+        res = f1 + (f2 - f1) * ((2.0 / 3.0) - hue) * 6.0;
+      else
+        res = f1;
+
+      return res;
+    }
+
+    vec3 hsl2rgb(vec3 hsl) {
+      vec3 rgb;
+
+      if (hsl.y == 0.0) {
+        rgb = vec3(hsl.z, hsl.z, hsl.z); // Luminance
+      } else {
+        float f2;
+
+        if (hsl.z < 0.5) {
+          f2 = hsl.z * (1.0 + hsl.y);
+        } else {
+          f2 = (hsl.z + hsl.y) - (hsl.y * hsl.z);
+        }
+
+        float f1 = 2.0 * hsl.z - f2;
+
+        rgb.x = h2rgb(f1, f2, hsl.x + (1.0 / 3.0));
+        rgb.y = h2rgb(f1, f2, hsl.x);
+        rgb.z = h2rgb(f1, f2, hsl.x - (1.0 / 3.0));
+      }
+
+      return rgb;
+    }
+
+    vec3 colormix_filter(vec3 color, vec3 hsl_ratios, float center_h, float h_range) {
+      vec3 hsl = rgb2hsl(color);
+      float dist = min(abs(center_h - hsl.x), abs(center_h - (hsl.x - 1.0)));
+      float weight = 1.0 - clamp(dist / h_range, 0.0, 1.0);
+      float new_h = clamp(hsl.x * (hsl_ratios.x + 1.0), 0.0, 1.0);
+      float new_s = clamp(hsl.y * (hsl_ratios.y + 1.0), 0.0, 1.0);
+      float new_l = clamp(hsl.z * (hsl_ratios.z + 1.0), 0.0, 1.0);
+      vec3 new_hsl = mix(hsl, vec3(new_h, new_s, new_l), weight);
+      return hsl2rgb(new_hsl);
+    }
+
     void main() {
       if (radial_blur != 0.0) {
         gl_FragColor = blur_radial(frame, sample_coordinate, radial_blur);
@@ -537,6 +619,7 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       gl_FragColor = vec4(highlight_filter(gl_FragColor.rgb, highlight), gl_FragColor.a);
       gl_FragColor = vec4(shadow_filter(gl_FragColor.rgb, shadow), gl_FragColor.a);
       gl_FragColor = vec4(vibrance_filter(gl_FragColor.rgb, vibrance), gl_FragColor.a);
+      gl_FragColor = vec4(colormix_filter(gl_FragColor.rgb, vec3(0.0, 0.0, 1.0), 0.0, 30.0/360.0), gl_FragColor.a);
 
       if (has_blend_image_texture_1 == 1) {
         vec4 blend_image_color = texture2D(blend_image_texture_1, sample_coordinate);
