@@ -586,12 +586,14 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
 
     vec3 colormix_filter(vec3 color, vec3 hsl_ratios, float center_h, float h_range) {
       vec3 hsl = rgb2hsl(color);
-      float dist = min(abs(center_h - hsl.x), abs(center_h - (hsl.x - 1.0)));
-      float weight = 1.0 - clamp(dist / h_range, 0.0, 1.0);
+      float h_dist = min(abs(center_h - hsl.x), abs(center_h - (hsl.x - 1.0)));
+      float h_weight = 1.0 - clamp(h_dist / h_range, 0.0, 1.0);
+      float s_weight = (1.0 - abs(1.0 - hsl.y));
+      float l_weight = (1.0 - abs(0.5 - hsl.z));
       float new_h = hsl.x + hsl_ratios.x * h_range;
       float new_s = clamp(hsl.y * (hsl_ratios.y + 1.0), 0.0, 1.0);
       float new_l = clamp(hsl.z * (hsl_ratios.z + 1.0), 0.0, 1.0);
-      vec3 new_hsl = mix(hsl, vec3(new_h, new_s, new_l), weight);
+      vec3 new_hsl = mix(hsl, vec3(new_h, new_s, new_l), min(h_weight, min(s_weight, l_weight)));
       return hsl2rgb(new_hsl);
     }
 
