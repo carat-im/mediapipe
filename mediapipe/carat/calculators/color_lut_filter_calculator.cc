@@ -581,7 +581,7 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       vec3 hsl = rgb2hsl(color);
       float dist = min(abs(center_h - hsl.x), abs(center_h - (hsl.x - 1.0)));
       float weight = 1.0 - clamp(dist / h_range, 0.0, 1.0);
-      float new_h = clamp(hsl.x * (hsl_ratios.x + 1.0), 0.0, 1.0);
+      float new_h = hsl.x + hsl_ratios.x * h_range;
       float new_s = clamp(hsl.y * (hsl_ratios.y + 1.0), 0.0, 1.0);
       float new_l = clamp(hsl.z * (hsl_ratios.z + 1.0), 0.0, 1.0);
       vec3 new_hsl = mix(hsl, vec3(new_h, new_s, new_l), weight);
@@ -619,7 +619,7 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       gl_FragColor = vec4(highlight_filter(gl_FragColor.rgb, highlight), gl_FragColor.a);
       gl_FragColor = vec4(shadow_filter(gl_FragColor.rgb, shadow), gl_FragColor.a);
       gl_FragColor = vec4(vibrance_filter(gl_FragColor.rgb, vibrance), gl_FragColor.a);
-      gl_FragColor = vec4(colormix_filter(gl_FragColor.rgb, vec3(0.0, 0.0, 1.0), 0.0, 30.0/360.0), gl_FragColor.a);
+      gl_FragColor = vec4(colormix_filter(gl_FragColor.rgb, vec3(1.0, 0.0, 0.0), 0.0, 30.0/360.0), gl_FragColor.a);
 
       if (has_blend_image_texture_1 == 1) {
         vec4 blend_image_color = texture2D(blend_image_texture_1, sample_coordinate);
