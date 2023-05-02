@@ -174,6 +174,13 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
     uniform float sharpen;
     uniform float vibrance;
 
+    uniform vec3 red_mix;
+    uniform vec3 orange_mix;
+    uniform vec3 yellow_mix;
+    uniform vec3 green_mix;
+    uniform vec3 blue_mix;
+    uniform vec3 purple_mix;
+
     vec4 lookup_table(vec4 color) {
       float blueColor = color.b * 63.0;
 
@@ -619,7 +626,12 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       gl_FragColor = vec4(highlight_filter(gl_FragColor.rgb, highlight), gl_FragColor.a);
       gl_FragColor = vec4(shadow_filter(gl_FragColor.rgb, shadow), gl_FragColor.a);
       gl_FragColor = vec4(vibrance_filter(gl_FragColor.rgb, vibrance), gl_FragColor.a);
-      gl_FragColor = vec4(colormix_filter(gl_FragColor.rgb, vec3(1.0, 0.0, 0.0), 0.0, 30.0/360.0), gl_FragColor.a);
+      gl_FragColor = vec4(colormix_filter(gl_FragColor.rgb, red_mix, 0.0, 30.0/360.0), gl_FragColor.a);
+      gl_FragColor = vec4(colormix_filter(gl_FragColor.rgb, orange_mix, 30.0/360.0, 30.0/360.0), gl_FragColor.a);
+      gl_FragColor = vec4(colormix_filter(gl_FragColor.rgb, yellow_mix, 60.0/360.0, 30.0/360.0), gl_FragColor.a);
+      gl_FragColor = vec4(colormix_filter(gl_FragColor.rgb, green_mix, 120.0/360.0, 60.0/360.0), gl_FragColor.a);
+      gl_FragColor = vec4(colormix_filter(gl_FragColor.rgb, blue_mix, 210.0/360.0, 60.0/360.0), gl_FragColor.a);
+      gl_FragColor = vec4(colormix_filter(gl_FragColor.rgb, purple_mix, 300.0/360.0, 60.0/360.0), gl_FragColor.a);
 
       if (has_blend_image_texture_1 == 1) {
         vec4 blend_image_color = texture2D(blend_image_texture_1, sample_coordinate);
@@ -836,6 +848,13 @@ absl::Status ColorLutFilterCalculator::RenderGpu(CalculatorContext *cc) {
     glUniform1f(glGetUniformLocation(program_, "shadow"), color_lut.shadow());
     glUniform1f(glGetUniformLocation(program_, "sharpen"), color_lut.sharpen());
     glUniform1f(glGetUniformLocation(program_, "vibrance"), color_lut.vibrance());
+
+    glUniform3f(glGetUniformLocation(program_, "red_mix"), color_lut.red_mix_h(), color_lut.red_mix_s(), color_lut.red_mix_l());
+    glUniform3f(glGetUniformLocation(program_, "orange_mix"), color_lut.orange_mix_h(), color_lut.orange_mix_s(), color_lut.orange_mix_l());
+    glUniform3f(glGetUniformLocation(program_, "yellow_mix"), color_lut.yellow_mix_h(), color_lut.yellow_mix_s(), color_lut.yellow_mix_l());
+    glUniform3f(glGetUniformLocation(program_, "green_mix"), color_lut.green_mix_h(), color_lut.green_mix_s(), color_lut.green_mix_l());
+    glUniform3f(glGetUniformLocation(program_, "blue_mix"), color_lut.blue_mix_h(), color_lut.blue_mix_s(), color_lut.blue_mix_l());
+    glUniform3f(glGetUniformLocation(program_, "purple_mix"), color_lut.purple_mix_h(), color_lut.purple_mix_s(), color_lut.purple_mix_l());
 
     bool apply_gamma = cc->InputSidePackets().Tag(kApplyGammaTag).Get<bool>();
     glUniform1i(glGetUniformLocation(program_, "apply_gamma"), apply_gamma ? 1 : 0);

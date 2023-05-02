@@ -25,4 +25,22 @@ message ColorLut {
   optional float shadow = 17;
   optional float sharpen = 18;
   optional float vibrance = 19;
+  optional float red_mix_h = 20;
+  optional float red_mix_s = 21;
+  optional float red_mix_l = 22;
+  optional float orange_mix_h = 23;
+  optional float orange_mix_s = 24;
+  optional float orange_mix_l = 25;
+  optional float yellow_mix_h = 26;
+  optional float yellow_mix_s = 27;
+  optional float yellow_mix_l = 28;
+  optional float green_mix_h = 29;
+  optional float green_mix_s = 30;
+  optional float green_mix_l = 31;
+  optional float blue_mix_h = 32;
+  optional float blue_mix_s = 33;
+  optional float blue_mix_l = 34;
+  optional float purple_mix_h = 35;
+  optional float purple_mix_s = 36;
+  optional float purple_mix_l = 37;
 }

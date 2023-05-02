@@ -23,7 +23,9 @@
   saturation:(float)saturation
   highlight:(float)highlight shadow:(float)shadow
   sharpen:(float)sharpen
-  vibrance:(float)vibrance;
+  vibrance:(float)vibrance
+  redMix:(NSArray *)redMix orangeMix:(NSArray *)orangeMix yellowMix:(NSArray *)yellowMix
+  greenMix:(NSArray *)greenMix blueMix:(NSArray *)blueMix purpleMix:(NSArray *)purpleMix;
 - (void)setFrameEffects:(NSArray *)effects;
 - (void)waitUntilIdle;
 @property(weak, nonatomic) id <CaratMediapipeGraphDelegate> delegate;

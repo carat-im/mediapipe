@@ -50,6 +50,12 @@ static const int kNumFaces = 5;
   float _shadow;
   float _sharpen;
   float _vibrance;
+  NSArray *_redMix;
+  NSArray *_orangeMix;
+  NSArray *_yellowMix;
+  NSArray *_greenMix;
+  NSArray *_blueMix;
+  NSArray *_purpleMix;
 }
 
 #pragma mark - Cleanup methods
@@ -174,7 +180,9 @@ static const int kNumFaces = 5;
   saturation:(float)saturation
   highlight:(float)highlight shadow:(float)shadow
   sharpen:(float)sharpen
-  vibrance:(float)vibrance {
+  vibrance:(float)vibrance 
+  redMix:(NSArray *)redMix orangeMix:(NSArray *)orangeMix yellowMix:(NSArray *)yellowMix
+  greenMix:(NSArray *)greenMix blueMix:(NSArray *)blueMix purpleMix:(NSArray *)purpleMix {
   if (!filePath || filePath == [NSNull null]) {
     _lutFilePath = nil;
   } else {
@@ -208,6 +216,12 @@ static const int kNumFaces = 5;
   _shadow = shadow;
   _sharpen = sharpen;
   _vibrance = vibrance;
+  _redMix = [redMix count] == 3 ? redMix : @[@0, @0, @0];
+  _orangeMix = [orangeMix count] == 3 ? orangeMix : @[@0, @0, @0];
+  _yellowMix = [yellowMix count] == 3 ? yellowMix : @[@0, @0, @0];
+  _greenMix = [greenMix count] == 3 ? greenMix : @[@0, @0, @0];
+  _blueMix = [blueMix count] == 3 ? blueMix : @[@0, @0, @0];
+  _purpleMix = [purpleMix count] == 3 ? purpleMix : @[@0, @0, @0];
 
   [self makeColorLutString];
 }
@@ -229,8 +243,24 @@ static const int kNumFaces = 5;
 }
 
 - (void)makeColorLutString {
-  self.colorLutString = [NSString stringWithFormat:@"intensity: %f grain: %f vignette: %f radial_blur: %f rgb_split: %f exposure: %f contrast: %f temperature: %f tint: %f saturation: %f highlight: %f shadow: %f sharpen: %f vibrance: %f",
-    _lutIntensity, _lutGrain, _lutVignette, _radialBlur, _rgbSplit, _exposure, _contrast, _temperature, _tint, _saturation, _highlight, _shadow, _sharpen, _vibrance];
+  self.colorLutString = [NSString stringWithFormat:@"intensity: %f grain: %f vignette: %f \
+  radial_blur: %f rgb_split: %f \
+  exposure: %f contrast: %f temperature: %f tint: %f saturation: %f highlight: %f shadow: %f sharpen: %f vibrance: %f \
+  red_mix_h: %f red_mix_s: %f red_mix_l: %f \
+  orange_mix_h: %f orange_mix_s: %f orange_mix_l: %f \
+  yellow_mix_h: %f yellow_mix_s: %f yellow_mix_l: %f \
+  green_mix_h: %f green_mix_s: %f green_mix_l: %f \
+  blue_mix_h: %f blue_mix_s: %f blue_mix_l: %f \
+  purple_mix_h: %f purple_mix_s: %f purple_mix_l: %f",
+    _lutIntensity, _lutGrain, _lutVignette,
+    _radialBlur, _rgbSplit,
+    _exposure, _contrast, _temperature, _tint, _saturation, _highlight, _shadow, _sharpen, _vibrance,
+    ((NSNumber *)_redMix[0]).floatValue, ((NSNumber *)_redMix[1]).floatValue, ((NSNumber *)_redMix[2]).floatValue,
+    ((NSNumber *)_orangeMix[0]).floatValue, ((NSNumber *)_orangeMix[1]).floatValue, ((NSNumber *)_orangeMix[2]).floatValue,
+    ((NSNumber *)_yellowMix[0]).floatValue, ((NSNumber *)_yellowMix[1]).floatValue, ((NSNumber *)_yellowMix[2]).floatValue,
+    ((NSNumber *)_greenMix[0]).floatValue, ((NSNumber *)_greenMix[1]).floatValue, ((NSNumber *)_greenMix[2]).floatValue,
+    ((NSNumber *)_blueMix[0]).floatValue, ((NSNumber *)_blueMix[1]).floatValue, ((NSNumber *)_blueMix[2]).floatValue,
+    ((NSNumber *)_purpleMix[0]).floatValue, ((NSNumber *)_purpleMix[1]).floatValue, ((NSNumber *)_purpleMix[2]).floatValue];
 
   if (_lutFilePath != nil) {
     self.colorLutString = [self.colorLutString stringByAppendingString:[NSString stringWithFormat:@" lut_path: \"%@\"", _lutFilePath]];
