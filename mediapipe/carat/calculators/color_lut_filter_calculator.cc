@@ -256,7 +256,7 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
     }
 
     vec3 exposure_filter(vec3 color, float exposure) {
-      return color * pow(2.0, exposure);
+      return clamp(color * pow(2.0, exposure), 0.0, 1.0);
     }
 
     vec3 contrast_filter(vec3 color, float contrast) {
