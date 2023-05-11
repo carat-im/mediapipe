@@ -601,7 +601,7 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       if (radial_blur != 0.0) {
         gl_FragColor = blur_radial(frame, sample_coordinate, radial_blur);
       } else if (sharpen != 0.0) {
-        gl_FragColor = vec4(sharpen_filter(frame, sample_coordinate, size, sharpen * intensity), gl_FragColor.a);
+        gl_FragColor = vec4(sharpen_filter(frame, sample_coordinate, size, sharpen * intensity), 1.0);
       } else {
         gl_FragColor = texture2D(frame, sample_coordinate);
       }
