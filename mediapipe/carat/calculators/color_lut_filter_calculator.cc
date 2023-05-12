@@ -590,7 +590,7 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       float h_dist = min(abs(center_h - hsl.x), abs(center_h - (hsl.x - 1.0)));
       float h_weight = 1.0 - clamp(h_dist / h_range, 0.0, 1.0);
       float s_weight = (1.0 - abs(1.0 - hsl.y));
-      float l_weight = (1.0 - abs(0.5 - hsl.z));
+      float l_weight = (1.0 - abs(0.5 - hsl.z) * 2.0);
       float weight = min(h_weight, min(s_weight, l_weight));
 
       float new_h = hsl.x + hsl_ratios.x * h_range;
@@ -627,14 +627,6 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
         gl_FragColor = lookup_table(gl_FragColor);
       }
 
-      gl_FragColor = vec4(exposure_filter(gl_FragColor.rgb, exposure * intensity), gl_FragColor.a);
-      gl_FragColor = vec4(contrast_filter(gl_FragColor.rgb, contrast * intensity), gl_FragColor.a);
-      gl_FragColor = vec4(temperature_tint_filter(gl_FragColor.rgb, temperature * intensity, tint * intensity), gl_FragColor.a);
-      gl_FragColor = vec4(saturation_filter(gl_FragColor.rgb, saturation * intensity), gl_FragColor.a);
-      gl_FragColor = vec4(highlight_filter(gl_FragColor.rgb, highlight * intensity), gl_FragColor.a);
-      gl_FragColor = vec4(shadow_filter(gl_FragColor.rgb, shadow * intensity), gl_FragColor.a);
-      gl_FragColor = vec4(vibrance_filter(gl_FragColor.rgb, vibrance * intensity), gl_FragColor.a);
-
       vec4 red_mix_result = colormix_filter(gl_FragColor.rgb, red_mix * intensity, 0.0, 30.0/360.0);
       vec4 orange_mix_result = colormix_filter(gl_FragColor.rgb, orange_mix * intensity, 30.0/360.0, 30.0/360.0);
       vec4 yellow_mix_result = colormix_filter(gl_FragColor.rgb, yellow_mix * intensity, 60.0/360.0, 30.0/360.0);
@@ -642,9 +634,17 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       vec4 blue_mix_result = colormix_filter(gl_FragColor.rgb, blue_mix * intensity, 210.0/360.0, 60.0/360.0);
       vec4 purple_mix_result = colormix_filter(gl_FragColor.rgb, purple_mix * intensity, 300.0/360.0, 60.0/360.0);
       gl_FragColor = vec4(
-        (gl_FragColor.rgb * 1.0 + red_mix_result.rgb * red_mix_result.a + orange_mix_result.rgb * orange_mix_result.a + yellow_mix_result.rgb * yellow_mix_result.a + green_mix_result.rgb * green_mix_result.a + blue_mix_result.rgb * blue_mix_result.a + purple_mix_result.rgb * purple_mix_result.a) / (1.0 + red_mix_result.a + orange_mix_result.a + yellow_mix_result.a + green_mix_result.a + blue_mix_result.a + purple_mix_result.a),
+        (gl_FragColor.rgb * 0.5 + red_mix_result.rgb * red_mix_result.a + orange_mix_result.rgb * orange_mix_result.a + yellow_mix_result.rgb * yellow_mix_result.a + green_mix_result.rgb * green_mix_result.a + blue_mix_result.rgb * blue_mix_result.a + purple_mix_result.rgb * purple_mix_result.a) / (0.5 + red_mix_result.a + orange_mix_result.a + yellow_mix_result.a + green_mix_result.a + blue_mix_result.a + purple_mix_result.a),
         gl_FragColor.a
       );
+
+      gl_FragColor = vec4(exposure_filter(gl_FragColor.rgb, exposure * intensity), gl_FragColor.a);
+      gl_FragColor = vec4(contrast_filter(gl_FragColor.rgb, contrast * intensity), gl_FragColor.a);
+      gl_FragColor = vec4(temperature_tint_filter(gl_FragColor.rgb, temperature * intensity, tint * intensity), gl_FragColor.a);
+      gl_FragColor = vec4(saturation_filter(gl_FragColor.rgb, saturation * intensity), gl_FragColor.a);
+      gl_FragColor = vec4(highlight_filter(gl_FragColor.rgb, highlight * intensity), gl_FragColor.a);
+      gl_FragColor = vec4(shadow_filter(gl_FragColor.rgb, shadow * intensity), gl_FragColor.a);
+      gl_FragColor = vec4(vibrance_filter(gl_FragColor.rgb, vibrance * intensity), gl_FragColor.a);
 
       if (has_blend_image_texture_1 == 1) {
         vec4 blend_image_color = texture2D(blend_image_texture_1, sample_coordinate);
