@@ -260,7 +260,7 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
     }
 
     vec3 contrast_filter(vec3 color, float contrast) {
-      return (color - 0.5) * (contrast + 1.0) + 0.5;
+      return clamp((color - 0.5) * (contrast + 1.0) + 0.5, 0.0, 1.0);
     }
 
     float rgb2h(vec3 rgb) {
@@ -403,7 +403,7 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
       vec3 down = texture2D(tex, vec2(uv.x, uv.y + unit.y)).rgb * neighbor;
       vec3 left = texture2D(tex, vec2(uv.x - unit.x, uv.y)).rgb * neighbor;
       vec3 center = texture2D(tex, uv).rgb * c;
-      return center + up + right + down + left;
+      return clamp(center + up + right + down + left, 0.0, 1.0);
     }
 
     int modi(int x, int y) {
@@ -638,13 +638,16 @@ absl::Status ColorLutFilterCalculator::InitGpu(CalculatorContext *cc) {
         gl_FragColor.a
       );
 
-      gl_FragColor = vec4(exposure_filter(gl_FragColor.rgb, exposure * intensity), gl_FragColor.a);
-      gl_FragColor = vec4(contrast_filter(gl_FragColor.rgb, contrast * intensity), gl_FragColor.a);
-      gl_FragColor = vec4(temperature_tint_filter(gl_FragColor.rgb, temperature * intensity, tint * intensity), gl_FragColor.a);
+      gl_FragColor = vec4(vibrance_filter(gl_FragColor.rgb, vibrance * intensity), gl_FragColor.a);
       gl_FragColor = vec4(saturation_filter(gl_FragColor.rgb, saturation * intensity), gl_FragColor.a);
+
+      gl_FragColor = vec4(temperature_tint_filter(gl_FragColor.rgb, temperature * intensity, tint * intensity), gl_FragColor.a);
+
       gl_FragColor = vec4(highlight_filter(gl_FragColor.rgb, highlight * intensity), gl_FragColor.a);
       gl_FragColor = vec4(shadow_filter(gl_FragColor.rgb, shadow * intensity), gl_FragColor.a);
-      gl_FragColor = vec4(vibrance_filter(gl_FragColor.rgb, vibrance * intensity), gl_FragColor.a);
+      gl_FragColor = vec4(exposure_filter(gl_FragColor.rgb, exposure * intensity), gl_FragColor.a);
+
+      gl_FragColor = vec4(contrast_filter(gl_FragColor.rgb, contrast * intensity), gl_FragColor.a);
 
       if (has_blend_image_texture_1 == 1) {
         vec4 blend_image_color = texture2D(blend_image_texture_1, sample_coordinate);
